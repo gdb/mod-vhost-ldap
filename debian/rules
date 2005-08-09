@@ -1,0 +1,84 @@
+#!/usr/bin/make -f
+
+# Uncomment this to turn on verbose mode.
+#export DH_VERBOSE=1
+
+# This is the debhelper compatibility version to use.
+export DH_COMPAT=3
+
+# These are used for cross-compiling and for saving the configure script
+# from having to guess our platform (since we know it already)
+DEB_HOST_GNU_TYPE   ?= $(shell dpkg-architecture -qDEB_HOST_GNU_TYPE)
+DEB_BUILD_GNU_TYPE  ?= $(shell dpkg-architecture -qDEB_BUILD_GNU_TYPE)
+
+CFLAGS = -Wall -g
+
+ifneq (,$(findstring noopt,$(DEB_BUILD_OPTIONS)))
+        CFLAGS += -O0
+else
+        CFLAGS += -O2
+endif
+ifeq (,$(findstring nostrip,$(DEB_BUILD_OPTIONS)))
+        INSTALL_PROGRAM += -s
+endif
+
+AP2_MAKE_DEFS=top_dir=/usr/share/apache2 \
+	APXS=apxs2 APACHECTL=apachectl2 \
+	LIBTOOL=libtool SH_LIBTOOL=libtool \
+	INCLUDES="-I/usr/include/apache2 -I /usr/include/apr-0"
+
+DEST=$(CURDIR)/debian/libapache2-mod-vhost-ldap
+
+configure: configure-stamp
+configure-stamp:
+	dh_testdir
+	touch configure-stamp
+
+binary: binary-indep binary-arch
+
+binary-indep:
+
+binary-arch: build install
+	dh_testdir
+	dh_testroot
+	dh_installdocs
+	dh_installexamples
+	dh_installman
+	dh_link
+	dh_strip
+	dh_compress
+	dh_fixperms -X var/lib/apache2/fastcgi -X var/lib/apache/fastcgi
+	dh_installdeb
+	dh_shlibdeps
+	dh_gencontrol
+	dh_md5sums
+	dh_builddeb
+
+build: build-stamp
+build-stamp: configure-stamp
+	dh_testdir
+	$(MAKE) $(AP2_MAKE_DEFS)
+	touch build-stamp-20
+
+clean:
+	dh_testdir
+	dh_testroot
+	rm -f build-stamp-* configure-stamp-*
+	$(MAKE) clean
+	rm -rf build-tree
+	dh_clean
+
+install: build
+	dh_testdir
+	dh_testroot
+	dh_clean -k
+	dh_installdirs
+	dh_installdocs
+	dh_installchangelogs ChangeLog
+	mkdir -p $(DEST)/usr/lib/apache2/modules
+	install -m 644 .libs/mod_vhost_ldap.so $(DEST)/usr/lib/apache2/modules
+	mkdir -p $(DEST)/etc/apache2/mods-available
+	install -m 644 debian/vhost_ldap.load $(DEST)/etc/apache2/mods-available
+	install -m 644 debian/vhost_ldap.conf $(DEST)/etc/apache2/mods-available
+
+.PHONY: binary binary-arch binary-indep clean build install

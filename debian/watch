@@ -1,0 +1,5 @@
+version=2
+
+http://www.sury.org/dist/ \
+	mod-vhost-ldap-([\d.]+)\.tar\.gz \
+	debian uupdate

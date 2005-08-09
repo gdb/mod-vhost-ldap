@@ -1,0 +1,2 @@
+LoadModule vhost_ldap_module    /usr/lib/apache2/modules/mod_vhost_ldap.so
+
