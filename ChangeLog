@@ -1,0 +1,9 @@
+2005-08-02 Ondřej Surý <ondrej@sury.org>
+	* Complete rewrite...
+	* Change apacheUsername to apacheSuexecUid and apacheSuexecGid
+	
+2005-05-25 Ondrej Sury <ondrej@sury.org>
+	* Version 0.2.0
+	* Renamed to mod_vhost_ldap
+	* Add ScriptAlias
+	* Add Suexec Username support

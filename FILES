@@ -1,0 +1,13 @@
+AUTHORS
+vhost_ldap.conf
+ChangeLog
+COPYING
+INSTALL
+FILES
+Makefile
+mod_vhost_ldap.c
+mod_vhost_ldap.schema
+mod_vhost_ldap.spec
+README
+TODO
+VERSION
