@@ -1,8 +1,8 @@
 mod-vhost-ldap (0.2.1-1) unstable; urgency=low
 
-  * Initial release.
+  * Initial release. (Closes: #321952)
 
- -- Ondřej Surý <ondrej@sury.org>  Tue,  2 Aug 2005 15:38:49 +0200
+ -- Ondřej Surý <ondrej@sury.org>  Tue,  9 Aug 2005 14:18:38 +0200
 
 Local variables:
 mode: debian-changelog
