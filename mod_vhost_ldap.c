@@ -290,7 +290,7 @@ static const char *mod_vhost_ldap_set_deref(cmd_parms *cmd, void *dummy, const c
 
 command_rec mod_vhost_ldap_cmds[] = {
     AP_INIT_TAKE1("VhostLDAPURL", mod_vhost_ldap_parse_url, NULL, RSRC_CONF,
-                  "URL to define LDAP connection. This should be an RFC 2255 complaint\n"
+                  "URL to define LDAP connection. This should be an RFC 2255 compliant\n"
                   "URL of the form ldap://host[:port]/basedn[?attrib[?scope[?filter]]].\n"
                   "<ul>\n"
                   "<li>Host is the name of the LDAP server. Use a space separated list of hosts \n"
@@ -309,7 +309,7 @@ command_rec mod_vhost_ldap_cmds[] = {
                  "Set to off to disable vhost_ldap, even if it's been enabled in a higher tree"),
 
     AP_INIT_TAKE1("VhostLDAPDereferenceAliases", mod_vhost_ldap_set_deref, NULL, RSRC_CONF,
-                  "Determines how aliases are handled during a search. Can bo one of the"
+                  "Determines how aliases are handled during a search. Can be one of the"
                   "values \"never\", \"searching\", \"finding\", or \"always\". "
                   "Defaults to always."),
 
