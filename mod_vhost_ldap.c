@@ -21,7 +21,7 @@
  */
 
 #define CORE_PRIVATE
-#define MOD_VHOST_VERSION "mod_vhost_ldap/0.2.2"
+#define MOD_VHOST_LDAP_VERSION "mod_vhost_ldap/0.2.2"
 
 #include <unistd.h>
 
