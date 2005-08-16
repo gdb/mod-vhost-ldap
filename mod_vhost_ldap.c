@@ -20,6 +20,9 @@
  * mod_vhost_ldap.c --- read virtual host config from LDAP directory
  */
 
+#define CORE_PRIVATE
+#define MOD_VHOST_VERSION "mod_vhost_ldap/0.2.2"
+
 #include <unistd.h>
 
 #include "httpd.h"
@@ -79,7 +82,7 @@ typedef struct mod_vhost_ldap_request_t {
     char *name;				/* ServerName */
     char *admin;			/* ServerAdmin */
     char *docroot;			/* DocumentRoot */
-    char *cgiroot;			/* ScripAlias */
+    char *cgiroot;			/* ScriptAlias */
     char *uid;				/* Suexec Uid */
     char *gid;				/* Suexec Gid */
 } mod_vhost_ldap_request_t;
@@ -98,7 +101,7 @@ static int mod_vhost_ldap_post_config(apr_pool_t *p, apr_pool_t *plog, apr_pool_
 
     }
 
-    ap_add_version_component(p, "mod_vhost_ldap/0.2.1");
+    ap_add_version_component(p, MOD_VHOST_LDAP_VERSION);
 
     return OK;
 }
@@ -326,7 +329,8 @@ mod_vhost_ldap_translate_name (request_rec * r)
     char filtbuf[FILTER_LENGTH];
     mod_vhost_ldap_config_t *cfg =
 	(mod_vhost_ldap_config_t *)ap_get_module_config(r->server->module_config, &vhost_ldap_module);
-
+    core_server_config * core =
+	(core_server_config *) ap_get_module_config(r->server->module_config, &core_module);
     util_ldap_connection_t *ldc = NULL;
     int result = 0;
     const char *dn = NULL;
@@ -427,17 +431,16 @@ start_over:
 	if (cgi && (cgi != r->uri + strspn(r->parsed_uri.path, "/"))) {
 	    cgi = NULL;
 	}
-    
-	if (cgi) {
-	    r->filename =
-		apr_pstrcat (r->pool, req->cgiroot, cgi + strlen("cgi-bin"), NULL);
-	    r->handler = "cgi-script";
-	    apr_table_setn(r->notes, "alias-forced-type", r->handler);
-	} else {
-	    
-	    r->filename =
-		apr_pstrcat (r->pool, req->docroot, r->parsed_uri.path, NULL);
-	}
+    }
+
+    if (cgi) {
+	r->filename =
+	    apr_pstrcat (r->pool, req->cgiroot, cgi + strlen("cgi-bin"), NULL);
+	r->handler = "cgi-script";
+	apr_table_setn(r->notes, "alias-forced-type", r->handler);
+    } else {
+	r->filename =
+	    apr_pstrcat (r->pool, req->docroot, r->parsed_uri.path, NULL);
     }
 
     r->server->server_hostname = apr_pstrdup (r->pool, req->name);
@@ -449,6 +452,8 @@ start_over:
     // set environment variables
     e = r->subprocess_env;
     apr_table_addn (e, "SERVER_ROOT", req->docroot);
+
+    core->ap_document_root = apr_pstrdup(r->pool, req->docroot);
 
     ap_log_rerror(APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0, r,
 		  "[mod_vhost_ldap.c]: translated to %s", r->filename);

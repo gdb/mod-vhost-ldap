@@ -1,3 +1,10 @@
+2005-08-16 Ondřej Surý <ondrej@sury.org>
+	* Works even without scriptAlias defined
+	* Fixed schema, include apacheScriptAlias, change conflicting UIDs of attributes
+	* DOCUMENT_ROOT variable is set correctly
+	* Fixed some typos
+	* Release 0.2.2
+
 2005-08-02 Ondřej Surý <ondrej@sury.org>
 	* Complete rewrite...
 	* Change apacheUsername to apacheSuexecUid and apacheSuexecGid
