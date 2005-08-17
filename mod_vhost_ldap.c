@@ -491,7 +491,7 @@ static ap_unix_identity_t *mod_vhost_ldap_get_suexec_id_doer(const request_rec *
   uid = (uid_t)atoll(req->uid);
   gid = (gid_t)atoll(req->gid);
 
-  if ((uid <= MIN_UID)||(gid <= MIN_GID)) {
+  if ((uid < MIN_UID)||(gid < MIN_GID)) {
       return NULL;
   }
 
