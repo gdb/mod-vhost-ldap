@@ -17,12 +17,13 @@ clean:
 	rm -rf mod_vhost_ldap-$(VERSION).tar.gz
 
 mod_vhost_ldap.o: mod_vhost_ldap.c
-	$(APXS) -Wc,-Wall -Wc,-Werror -Wc,-g -Wc,-DDEBUG -c -lldap_r mod_vhost_ldap.c
+	$(APXS) -Wc,-Wall -Wc,-Werror -Wc,-g -Wc,-DDEBUG -Wc,-DMOD_VHOST_LDAP_VERSION=\\\"mod_vhost_ldap/$(VERSION)\\\" -c -lldap_r mod_vhost_ldap.c
 
-archive: clean
-	mkdir mod_vhost_ldap-$(VERSION)
-	cp $(DISTFILES) mod_vhost_ldap-$(VERSION)
-	tar czf mod_vhost_ldap-$(VERSION).tar.gz mod_vhost_ldap-$(VERSION)
+archive:
+	svn export svn+ssh://ondrej@svn.debian.org/svn/modvhostldap mod-vhost-ldap-`cat VERSION`;
+	tar czf ../mod-vhost-ldap-$(VERSION).tar.gz mod-vhost-ldap-$(VERSION);
+	tar cjf ../mod-vhost-ldap-$(VERSION).tar.bz2 mod-vhost-ldap-$(VERSION);
+	rm -rf mod-vhost-ldap-$(VERSION);
 
 format:
 	indent *.c
