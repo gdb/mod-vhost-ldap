@@ -1,3 +1,11 @@
+mod-vhost-ldap (0.2.4-1) unstable; urgency=low
+
+  * New upstream release.
+    + Fix VERSION file mishmash (Closes: #323777)
+    + MIN_UID/MIN_GID lowered to 100/100 (Closes: #323830)
+
+ -- Ondřej Surý <ondrej@sury.org>  Mon, 29 Aug 2005 16:51:46 +0200
+
 mod-vhost-ldap (0.2.3-1) unstable; urgency=low
 
   * New upstream release.
