@@ -21,7 +21,6 @@
  */
 
 #define CORE_PRIVATE
-#define MOD_VHOST_LDAP_VERSION "mod_vhost_ldap/0.2.4"
 
 #include <unistd.h>
 
@@ -54,9 +53,6 @@ module AP_MODULE_DECLARE_DATA vhost_ldap_module;
 
 typedef struct mod_vhost_ldap_config_t {
     apr_pool_t *pool;			/* Pool that this config is allocated from */
-#if APR_HAS_THREADS
-    apr_thread_mutex_t *lock;           /* Lock for this config */
-#endif
     int enabled;			/* Is vhost_ldap enabled? */
 
     /* These parameters are all derived from the VhostLDAPURL directive */
@@ -113,10 +109,6 @@ mod_vhost_ldap_create_server_config (apr_pool_t *p, server_rec *s)
 	(mod_vhost_ldap_config_t *)apr_pcalloc(p, sizeof (mod_vhost_ldap_config_t));
 
     cfg->pool = p;
-
-#if APR_HAS_THREADS
-    apr_thread_mutex_create(&cfg->lock, APR_THREAD_MUTEX_DEFAULT, p);
-#endif
 
     cfg->enabled = 0;
     cfg->have_ldap_url = 0;
