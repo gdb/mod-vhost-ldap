@@ -21,7 +21,7 @@
  */
 
 #define CORE_PRIVATE
-#define MOD_VHOST_LDAP_VERSION "mod_vhost_ldap/0.2.2"
+#define MOD_VHOST_LDAP_VERSION "mod_vhost_ldap/0.2.4"
 
 #include <unistd.h>
 
@@ -47,8 +47,8 @@
 #include "unixd.h"              /* Contains the suexec_identity hook used on Unix */
 #endif
 
-#define MIN_UID 1000
-#define MIN_GID 1000
+#define MIN_UID 100
+#define MIN_GID 100
 
 module AP_MODULE_DECLARE_DATA vhost_ldap_module;
 
