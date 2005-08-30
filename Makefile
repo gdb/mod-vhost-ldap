@@ -24,9 +24,11 @@ deb: make clean
 	/usr/bin/pdebuild --configfile /home/ondrej/.pbuilderrc.unstable
 
 archive:
-	svn export svn+ssh://ondrej@svn.debian.org/svn/modvhostldap mod-vhost-ldap-`cat VERSION`;
-	tar czf ../mod-vhost-ldap-$(VERSION).tar.gz mod-vhost-ldap-$(VERSION);
-	tar cjf ../mod-vhost-ldap-$(VERSION).tar.bz2 mod-vhost-ldap-$(VERSION);
+	svn export svn+ssh://ondrej@svn.debian.org/svn/modvhostldap/mod-vhost-ldap mod-vhost-ldap-`cat VERSION`;
+	rm -rf mod-vhost-ldap-$(VERSION)/debian
+	tar czf ../tarballs/mod-vhost-ldap-$(VERSION).tar.gz mod-vhost-ldap-$(VERSION);
+	ln -sf mod-vhost-ldap-$(VERSION).tar.gz ../tarballs/mod-vhost-ldap_$(VERSION).orig.tar.gz
+	tar cjf ../tarballs/mod-vhost-ldap-$(VERSION).tar.bz2 mod-vhost-ldap-$(VERSION);
 	rm -rf mod-vhost-ldap-$(VERSION);
 
 format:
