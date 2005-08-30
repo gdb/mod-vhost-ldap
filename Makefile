@@ -19,6 +19,10 @@ clean:
 mod_vhost_ldap.o: mod_vhost_ldap.c
 	$(APXS) -Wc,-Wall -Wc,-Werror -Wc,-g -Wc,-DDEBUG -Wc,-DMOD_VHOST_LDAP_VERSION=\\\"mod_vhost_ldap/$(VERSION)\\\" -c -lldap_r mod_vhost_ldap.c
 
+deb: make clean
+	svn export svn+ssh://ondrej@svn.debian.org/svn/modvhostldap mod-vhost-ldap-`cat VERSION`.orig;
+	/usr/bin/pdebuild --configfile /home/ondrej/.pbuilderrc.unstable
+
 archive:
 	svn export svn+ssh://ondrej@svn.debian.org/svn/modvhostldap mod-vhost-ldap-`cat VERSION`;
 	tar czf ../mod-vhost-ldap-$(VERSION).tar.gz mod-vhost-ldap-$(VERSION);
