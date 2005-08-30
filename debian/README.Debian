@@ -1,0 +1,12 @@
+libapache2-mod-vhost-ldap, suexec and cgid
+==========================================
+
+libapache2-mod-vhost-ldap suexec support doesn't work with cgid (enabled
+as default in Debian).  Cgid has special hacks for suexec module and any
+other module which set suexec uid and gid crashes mod_cgid. For more
+information see http://issues.apache.org/bugzilla/show_bug.cgi?id=36410
+
+You can use cgi module instead.
+
+ -- Ondřej Surý <ondrej@sury.org>  Tue, 30 Aug 2005 09:24:21 +0200
+
