@@ -1,3 +1,14 @@
+libapache2-mod-vhost-ldap and LDAP server support
+=================================================
+
+Your LDAP server needs to include mod_vhost_ldap.schema. If you do not use
+OpenLDAP you are on your own to build a schema.
+
+You should configure the LDAP server to maintain indices on apacheServerName,
+apacheServerAlias and anything you use in your additional search filter.
+
+ -- Ondřej Surý <ondrej@sury.org>  Tue, 30 Aug 2005 15:25:32 +0200
+
 libapache2-mod-vhost-ldap, suexec and cgid
 ==========================================
 

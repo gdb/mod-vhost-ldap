@@ -4,7 +4,7 @@ mod-vhost-ldap (0.2.4-1) unstable; urgency=low
     + Fix VERSION file mishmash (Closes: #323777)
     + MIN_UID/MIN_GID lowered to 100/100 (Closes: #323830)
 
- -- Ondřej Surý <ondrej@sury.org>  Mon, 29 Aug 2005 16:51:46 +0200
+ -- Ondřej Surý <ondrej@debian.org>  Mon, 29 Aug 2005 16:51:46 +0200
 
 mod-vhost-ldap (0.2.3-1) unstable; urgency=low
 
@@ -12,7 +12,7 @@ mod-vhost-ldap (0.2.3-1) unstable; urgency=low
   * Fix off-by-one error in minimum UID/GID (Closes: #323433)
   * Fix schema (yet again) (Closes: #323437)
 
- -- Ondřej Surý <ondrej@sury.org>  Wed, 17 Aug 2005 11:40:55 +0200
+ -- Ondřej Surý <ondrej@debian.org>  Wed, 17 Aug 2005 11:40:55 +0200
 
 mod-vhost-ldap (0.2.2-1) unstable; urgency=low
 
@@ -21,13 +21,13 @@ mod-vhost-ldap (0.2.2-1) unstable; urgency=low
   * Fix invalid behaviour when apacheScriptAlias missing (Closes: #323006)
   * Set DOCUMENT_ROOT internal variable (Closes: #323007)
 
- -- Ondřej Surý <ondrej@sury.org>  Tue, 16 Aug 2005 09:37:12 +0200
+ -- Ondřej Surý <ondrej@debian.org>  Tue, 16 Aug 2005 09:37:12 +0200
 
 mod-vhost-ldap (0.2.1-1) unstable; urgency=low
 
   * Initial release. (Closes: #321952)
 
- -- Ondřej Surý <ondrej@sury.org>  Tue,  9 Aug 2005 14:18:38 +0200
+ -- Ondřej Surý <ondrej@debian.org>  Tue,  9 Aug 2005 14:18:38 +0200
 
 Local variables:
 mode: debian-changelog
