@@ -84,7 +84,7 @@ typedef struct mod_vhost_ldap_request_t {
 } mod_vhost_ldap_request_t;
 
 char *attributes[] =
-  { "apacheServerName", "apacheServerAdmin", "apacheDocumentRoot", "apacheScriptAlias", "apacheSuexecUid", "apacheSuexecGid", 0 };
+  { "apacheServerName", "apacheDocumentRoot", "apacheScriptAlias", "apacheSuexecUid", "apacheSuexecGid", "apacheServerAdmin", 0 };
 
 static int mod_vhost_ldap_post_config(apr_pool_t *p, apr_pool_t *plog, apr_pool_t *ptemp, server_rec *s)
 {
@@ -354,7 +354,7 @@ start_over:
     }
 
     ap_log_rerror (APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0, r,
-		   "[mod_vhost_ldap.c]: translating %s", r->parsed_uri.path);
+		   "[mod_vhost_ldap.c]: translating %s", r->uri);
 
     apr_snprintf(filtbuf, FILTER_LENGTH, "(&(%s)(|(apacheServerName=%s)(apacheServerAlias=%s)))", cfg->filter, r->hostname, r->hostname);
 
@@ -375,7 +375,7 @@ start_over:
         ap_log_rerror(APLOG_MARK, APLOG_WARNING|APLOG_NOERRNO, 0, r, 
                       "[mod_vhost_ldap.c] translate: "
                       "translate failed; URI %s [%s][%s]",
-		      r->parsed_uri.path, ldc->reason, ldap_err2string(result));
+		      r->uri, ldc->reason, ldap_err2string(result));
 	return DECLINED;
     }
 
@@ -409,6 +409,16 @@ start_over:
 	}
     }
 
+    ap_log_rerror(APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0, r,
+		  "[mod_vhost_ldap.c]: loaded from ldap: "
+		  "apacheServerName: %s, "
+		  "apacheServerAdmin: %s, "
+		  "apacheDocumentRoot: %s, "
+		  "apacheScriptAlias: %s, "
+		  "apacheSuexecUid: %s, "
+		  "apacheSuexecGid: %s"
+		  , req->name, req->admin, req->docroot, req->cgiroot, req->uid, req->gid);
+
     if ((req->name == NULL)||(req->docroot == NULL)) {
         ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, r, 
                       "[mod_vhost_ldap.c] translate: "
@@ -419,20 +429,19 @@ start_over:
     cgi = NULL;
   
     if (req->cgiroot) {
-	cgi = strstr(r->parsed_uri.path, "cgi-bin/");
-	if (cgi && (cgi != r->uri + strspn(r->parsed_uri.path, "/"))) {
+	cgi = strstr(r->uri, "cgi-bin/");
+	if (cgi && (cgi != r->uri + strspn(r->uri, "/"))) {
 	    cgi = NULL;
 	}
     }
-
     if (cgi) {
-	r->filename =
-	    apr_pstrcat (r->pool, req->cgiroot, cgi + strlen("cgi-bin"), NULL);
+	r->filename = apr_pstrcat (r->pool, req->cgiroot, cgi + strlen("cgi-bin"), NULL);
 	r->handler = "cgi-script";
 	apr_table_setn(r->notes, "alias-forced-type", r->handler);
+    } else if (r->uri[0] == '/') {
+	r->filename = apr_pstrcat (r->pool, req->docroot, r->uri, NULL);
     } else {
-	r->filename =
-	    apr_pstrcat (r->pool, req->docroot, r->parsed_uri.path, NULL);
+	return DECLINED;
     }
 
     r->server->server_hostname = apr_pstrdup (r->pool, req->name);

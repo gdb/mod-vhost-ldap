@@ -1,3 +1,10 @@
+2005-09-09 Ondřej Surý <ondrej@sury.org>
+	* mod_vhost.ldap.c: implement workaround for fault mod_ldap caching
+	                    http://issues.apache.org/bugzilla/show_bug.cgi?id=33901
+	* mod_vhost_ldap.c: change r->parsed_uri.path to more simpler r->uri
+	* vhost_ldap.conf: add note about mod_ldap module requirement
+	* VERSION: 0.2.5 release
+
 2005-08-30 Ondřej Surý <ondrej@sury.org>
 	* mod_vhost_ldap.c: use VERSION file as authoritative source for VERSION number
 	* mod_vhost_ldap.c: MIN_UID/MIN_GID lowered to 100/100 
