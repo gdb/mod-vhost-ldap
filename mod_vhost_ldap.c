@@ -51,9 +51,12 @@
 
 module AP_MODULE_DECLARE_DATA vhost_ldap_module;
 
+typedef enum {
+    MVL_UNSET, MVL_DISABLED, MVL_ENABLED
+} mod_vhost_ldap_status_e;
+
 typedef struct mod_vhost_ldap_config_t {
-    apr_pool_t *pool;			/* Pool that this config is allocated from */
-    int enabled;			/* Is vhost_ldap enabled? */
+    mod_vhost_ldap_status_e enabled;			/* Is vhost_ldap enabled? */
 
     /* These parameters are all derived from the VhostLDAPURL directive */
     char *url;				/* String representation of LDAP URL */
@@ -68,6 +71,7 @@ typedef struct mod_vhost_ldap_config_t {
     char *binddn;			/* DN to bind to server (can be NULL) */
     char *bindpw;			/* Password to bind to server (can be NULL) */
 
+    int have_deref;                     /* Set if we have found an Deref option */
     int have_ldap_url;			/* Set if we have found an LDAP url */
 
     int secure;				/* True if SSL connections are requested */
@@ -105,21 +109,64 @@ static int mod_vhost_ldap_post_config(apr_pool_t *p, apr_pool_t *plog, apr_pool_
 static void *
 mod_vhost_ldap_create_server_config (apr_pool_t *p, server_rec *s)
 {
-    mod_vhost_ldap_config_t *cfg =
+    mod_vhost_ldap_config_t *conf =
 	(mod_vhost_ldap_config_t *)apr_pcalloc(p, sizeof (mod_vhost_ldap_config_t));
 
-    cfg->pool = p;
+    conf->enabled = MVL_UNSET;
+    conf->have_ldap_url = 0;
+    conf->have_deref = 0;
+    conf->binddn = NULL;
+    conf->bindpw = NULL;
+    conf->deref = always;
 
-    cfg->enabled = 0;
-    cfg->have_ldap_url = 0;
-    cfg->url = "";
-    cfg->host = NULL;
-    cfg->binddn = NULL;
-    cfg->bindpw = NULL;
-    cfg->deref = always;
-    cfg->secure = 0;
+    return conf;
+}
 
-    return cfg;
+static void *
+mod_vhost_ldap_merge_server_config(apr_pool_t *p, void *parentv, void *childv)
+{
+    mod_vhost_ldap_config_t *parent = (mod_vhost_ldap_config_t *) parentv;
+    mod_vhost_ldap_config_t *child  = (mod_vhost_ldap_config_t *) childv;
+    mod_vhost_ldap_config_t *conf =
+	(mod_vhost_ldap_config_t *)apr_pcalloc(p, sizeof(mod_vhost_ldap_config_t));
+
+    if (child->enabled == MVL_UNSET) {
+	conf->enabled = parent->enabled;
+    } else {
+	conf->enabled = child->enabled;
+    }
+
+    if (child->have_ldap_url) {
+	conf->have_ldap_url = child->have_ldap_url;
+	conf->url = child->url;
+	conf->host = child->host;
+	conf->port = child->port;
+	conf->basedn = child->basedn;
+	conf->scope = child->scope;
+	conf->filter = child->filter;
+	conf->secure = child->secure;
+    } else {
+	conf->have_ldap_url = parent->have_ldap_url;
+	conf->url = parent->url;
+	conf->host = parent->host;
+	conf->port = parent->port;
+	conf->basedn = parent->basedn;
+	conf->scope = parent->scope;
+	conf->filter = parent->filter;
+	conf->secure = parent->secure;
+    }
+    if (child->have_deref) {
+	conf->have_deref = child->have_deref;
+	conf->deref = child->deref;
+    } else {
+	conf->have_deref = parent->have_deref;
+	conf->deref = parent->deref;
+    }
+
+    conf->binddn = (child->binddn ? child->binddn : parent->binddn);
+    conf->bindpw = (child->bindpw ? child->bindpw : parent->bindpw);
+
+    return conf;
 }
 
 /* 
@@ -133,7 +180,7 @@ static const char *mod_vhost_ldap_parse_url(cmd_parms *cmd,
     int result;
     apr_ldap_url_desc_t *urld;
 
-    mod_vhost_ldap_config_t *cfg =
+    mod_vhost_ldap_config_t *conf =
 	(mod_vhost_ldap_config_t *)ap_get_module_config(cmd->server->module_config,
 							&vhost_ldap_module);
 
@@ -156,7 +203,7 @@ static const char *mod_vhost_ldap_parse_url(cmd_parms *cmd,
             return "Could not parse LDAP URL";
         }
     }
-    cfg->url = apr_pstrdup(cmd->pool, url);
+    conf->url = apr_pstrdup(cmd->pool, url);
 
     ap_log_error(APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0,
 	         cmd->server, "[mod_vhost_ldap.c] url parse: Host: %s", urld->lud_host);
@@ -175,19 +222,19 @@ static const char *mod_vhost_ldap_parse_url(cmd_parms *cmd,
 	         cmd->server, "[mod_vhost_ldap.c] url parse: filter: %s", urld->lud_filter);
 
     /* Set all the values, or at least some sane defaults */
-    if (cfg->host) {
-        char *p = apr_palloc(cmd->pool, strlen(cfg->host) + strlen(urld->lud_host) + 2);
+    if (conf->host) {
+        char *p = apr_palloc(cmd->pool, strlen(conf->host) + strlen(urld->lud_host) + 2);
         strcpy(p, urld->lud_host);
         strcat(p, " ");
-        strcat(p, cfg->host);
-        cfg->host = p;
+        strcat(p, conf->host);
+        conf->host = p;
     }
     else {
-        cfg->host = urld->lud_host? apr_pstrdup(cmd->pool, urld->lud_host) : "localhost";
+        conf->host = urld->lud_host? apr_pstrdup(cmd->pool, urld->lud_host) : "localhost";
     }
-    cfg->basedn = urld->lud_dn? apr_pstrdup(cmd->pool, urld->lud_dn) : "";
+    conf->basedn = urld->lud_dn? apr_pstrdup(cmd->pool, urld->lud_dn) : "";
 
-    cfg->scope = urld->lud_scope == LDAP_SCOPE_ONELEVEL ?
+    conf->scope = urld->lud_scope == LDAP_SCOPE_ONELEVEL ?
         LDAP_SCOPE_ONELEVEL : LDAP_SCOPE_SUBTREE;
 
     if (urld->lud_filter) {
@@ -196,86 +243,91 @@ static const char *mod_vhost_ldap_parse_url(cmd_parms *cmd,
 	     * Get rid of the surrounding parens; later on when generating the
 	     * filter, they'll be put back.
              */
-            cfg->filter = apr_pstrdup(cmd->pool, urld->lud_filter+1);
-            cfg->filter[strlen(cfg->filter)-1] = '\0';
+            conf->filter = apr_pstrdup(cmd->pool, urld->lud_filter+1);
+            conf->filter[strlen(conf->filter)-1] = '\0';
         }
         else {
-            cfg->filter = apr_pstrdup(cmd->pool, urld->lud_filter);
+            conf->filter = apr_pstrdup(cmd->pool, urld->lud_filter);
         }
     }
     else {
-        cfg->filter = "objectClass=apacheConfig";
+        conf->filter = "objectClass=apacheConfig";
     }
 
       /* "ldaps" indicates secure ldap connections desired
       */
     if (strncasecmp(url, "ldaps", 5) == 0)
     {
-        cfg->secure = 1;
-        cfg->port = urld->lud_port? urld->lud_port : LDAPS_PORT;
+        conf->secure = 1;
+        conf->port = urld->lud_port? urld->lud_port : LDAPS_PORT;
         ap_log_error(APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0, cmd->server,
                      "LDAP: vhost_ldap using SSL connections");
     }
     else
     {
-        cfg->secure = 0;
-        cfg->port = urld->lud_port? urld->lud_port : LDAP_PORT;
+        conf->secure = 0;
+        conf->port = urld->lud_port? urld->lud_port : LDAP_PORT;
         ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, cmd->server, 
                      "LDAP: vhost_ldap not using SSL connections");
     }
 
-    cfg->have_ldap_url = 1;
+    conf->have_ldap_url = 1;
     apr_ldap_free_urldesc(urld);
     return NULL;
 }
 
 static const char *mod_vhost_ldap_set_enabled(cmd_parms *cmd, void *dummy, int enabled)
 {
-    mod_vhost_ldap_config_t *cfg =
+    mod_vhost_ldap_config_t *conf =
 	(mod_vhost_ldap_config_t *)ap_get_module_config(cmd->server->module_config,
 							 &vhost_ldap_module);
 
-    cfg->enabled = enabled;
+    conf->enabled = (enabled) ? MVL_ENABLED : MVL_DISABLED;
+
     return NULL;
 }
 
 static const char *mod_vhost_ldap_set_binddn(cmd_parms *cmd, void *dummy, const char *binddn)
 {
-    mod_vhost_ldap_config_t *cfg =
+    mod_vhost_ldap_config_t *conf =
 	(mod_vhost_ldap_config_t *)ap_get_module_config(cmd->server->module_config,
 							 &vhost_ldap_module);
 
-    cfg->binddn = apr_pstrdup(cmd->pool, binddn);
+    conf->binddn = apr_pstrdup(cmd->pool, binddn);
     return NULL;
 }
 
 static const char *mod_vhost_ldap_set_bindpw(cmd_parms *cmd, void *dummy, const char *bindpw)
 {
-    mod_vhost_ldap_config_t *cfg =
+    mod_vhost_ldap_config_t *conf =
 	(mod_vhost_ldap_config_t *)ap_get_module_config(cmd->server->module_config,
 							 &vhost_ldap_module);
 
-    cfg->bindpw = apr_pstrdup(cmd->pool, bindpw);
+    conf->bindpw = apr_pstrdup(cmd->pool, bindpw);
     return NULL;
 }
 
 static const char *mod_vhost_ldap_set_deref(cmd_parms *cmd, void *dummy, const char *deref)
 {
-    mod_vhost_ldap_config_t *cfg = 
+    mod_vhost_ldap_config_t *conf = 
 	(mod_vhost_ldap_config_t *)ap_get_module_config (cmd->server->module_config,
 							 &vhost_ldap_module);
 
     if (strcmp(deref, "never") == 0 || strcasecmp(deref, "off") == 0) {
-        cfg->deref = never;
+        conf->deref = never;
+	conf->have_deref = 1;
     }
     else if (strcmp(deref, "searching") == 0) {
-        cfg->deref = searching;
+        conf->deref = searching;
+	conf->have_deref = 1;
     }
     else if (strcmp(deref, "finding") == 0) {
-        cfg->deref = finding;
+        conf->deref = finding;
+	conf->have_deref = 1;
     }
     else if (strcmp(deref, "always") == 0 || strcasecmp(deref, "on") == 0) {
-        cfg->deref = always;
+        conf->deref = always;
+	conf->have_deref = 1;
     }
     else {
         return "Unrecognized value for VhostLDAPAliasDereference directive";
@@ -319,7 +371,7 @@ mod_vhost_ldap_translate_name (request_rec * r)
     int failures = 0;
     const char **vals = NULL;
     char filtbuf[FILTER_LENGTH];
-    mod_vhost_ldap_config_t *cfg =
+    mod_vhost_ldap_config_t *conf =
 	(mod_vhost_ldap_config_t *)ap_get_module_config(r->server->module_config, &vhost_ldap_module);
     core_server_config * core =
 	(core_server_config *) ap_get_module_config(r->server->module_config, &core_module);
@@ -332,20 +384,17 @@ mod_vhost_ldap_translate_name (request_rec * r)
 	(mod_vhost_ldap_request_t *)apr_pcalloc(r->pool, sizeof(mod_vhost_ldap_request_t));
     ap_set_module_config(r->request_config, &vhost_ldap_module, req);
 
-    if (!cfg->enabled) {
-	return DECLINED;
-    }
-
-    if (!cfg->have_ldap_url) {
+    // mod_vhost_ldap is disabled or we don't have LDAP Url
+    if ((conf->enabled != MVL_ENABLED)||(!conf->have_ldap_url)) {
 	return DECLINED;
     }
 
 start_over:
 
-    if (cfg->host) {
-        ldc = util_ldap_connection_find(r, cfg->host, cfg->port,
-					cfg->binddn, cfg->bindpw, cfg->deref,
-					cfg->secure);
+    if (conf->host) {
+        ldc = util_ldap_connection_find(r, conf->host, conf->port,
+					conf->binddn, conf->bindpw, conf->deref,
+					conf->secure);
     }
     else {
         ap_log_rerror(APLOG_MARK, APLOG_WARNING|APLOG_NOERRNO, 0, r, 
@@ -356,9 +405,9 @@ start_over:
     ap_log_rerror (APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0, r,
 		   "[mod_vhost_ldap.c]: translating %s", r->uri);
 
-    apr_snprintf(filtbuf, FILTER_LENGTH, "(&(%s)(|(apacheServerName=%s)(apacheServerAlias=%s)))", cfg->filter, r->hostname, r->hostname);
+    apr_snprintf(filtbuf, FILTER_LENGTH, "(&(%s)(|(apacheServerName=%s)(apacheServerAlias=%s)))", conf->filter, r->hostname, r->hostname);
 
-    result = util_ldap_cache_getuserdn(r, ldc, cfg->url, cfg->basedn, cfg->scope,
+    result = util_ldap_cache_getuserdn(r, ldc, conf->url, conf->basedn, conf->scope,
 				       attributes, filtbuf, &dn, &vals);
 
     util_ldap_connection_close(ldc);
@@ -466,7 +515,7 @@ start_over:
 static ap_unix_identity_t *mod_vhost_ldap_get_suexec_id_doer(const request_rec * r)
 {
   ap_unix_identity_t *ugid = NULL;
-  mod_vhost_ldap_config_t *cfg = 
+  mod_vhost_ldap_config_t *conf = 
       (mod_vhost_ldap_config_t *)ap_get_module_config(r->server->module_config,
 						      &vhost_ldap_module);
   mod_vhost_ldap_request_t *req =
@@ -476,8 +525,8 @@ static ap_unix_identity_t *mod_vhost_ldap_get_suexec_id_doer(const request_rec *
   uid_t uid = -1;
   gid_t gid = -1;
 
-  // mod_vhost_ldap is disabled
-  if (!cfg->enabled) {
+  // mod_vhost_ldap is disabled or we don't have LDAP Url
+  if ((conf->enabled != MVL_ENABLED)||(!conf->have_ldap_url)) {
       return NULL;
   }
 
@@ -519,7 +568,7 @@ module AP_MODULE_DECLARE_DATA vhost_ldap_module = {
   NULL,
   NULL,
   mod_vhost_ldap_create_server_config,
-  NULL,
+  mod_vhost_ldap_merge_server_config,
   mod_vhost_ldap_cmds,
   mod_vhost_ldap_register_hooks,
 };
