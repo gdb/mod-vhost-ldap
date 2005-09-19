@@ -267,7 +267,7 @@ static const char *mod_vhost_ldap_parse_url(cmd_parms *cmd,
     {
         conf->secure = 0;
         conf->port = urld->lud_port? urld->lud_port : LDAP_PORT;
-        ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, cmd->server, 
+        ap_log_error(APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0, cmd->server, 
                      "LDAP: vhost_ldap not using SSL connections");
     }
 
@@ -398,11 +398,11 @@ start_over:
     }
     else {
         ap_log_rerror(APLOG_MARK, APLOG_WARNING|APLOG_NOERRNO, 0, r, 
-                      "[mod_vhost_ldap.c] translate: no sec->host - weird...?");
+                      "[mod_vhost_ldap.c] translate: no conf->host - weird...?");
         return DECLINED;
     }
 
-    ap_log_rerror (APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0, r,
+    ap_log_rerror(APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0, r,
 		   "[mod_vhost_ldap.c]: translating %s", r->uri);
 
     apr_snprintf(filtbuf, FILTER_LENGTH, "(&(%s)(|(apacheServerName=%s)(apacheServerAlias=%s)))", conf->filter, r->hostname, r->hostname);
@@ -421,10 +421,10 @@ start_over:
 
     /* handle bind failure */
     if (result != LDAP_SUCCESS) {
-        ap_log_rerror(APLOG_MARK, APLOG_WARNING|APLOG_NOERRNO, 0, r, 
+        ap_log_rerror(APLOG_MARK, APLOG_WARN|APLOG_NOERRNO, 0, r, 
                       "[mod_vhost_ldap.c] translate: "
-                      "translate failed; URI %s [%s][%s]",
-		      r->uri, ldc->reason, ldap_err2string(result));
+                      "translate failed; VHost %s; URI %s[%s]",
+		      r->hostname, r->uri, ldap_err2string(result));
 	return DECLINED;
     }
 
