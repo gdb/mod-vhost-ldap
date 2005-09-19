@@ -1,4 +1,8 @@
-2005-09-16 Ondřej Surý <ondrej@sury.org
+2005-09-19 Ondřej Surý <ondrej@sury.org>
+	* mod_vhost_ldap.c: add more information to log when vhost is not found
+	* VERSION: 0.2.7 release
+	
+2005-09-16 Ondřej Surý <ondrej@sury.org>
 	* mod_vhost_ldap.c: implement merge_server_config to allow different settings for different vhosts
 	* VERSION: 0.2.6 release
 
