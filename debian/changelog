@@ -1,6 +1,12 @@
+mod-vhost-ldap (0.2.7-1) unstable; urgency=low
+
+  * New upstream release.
+
+ -- Ondřej Surý <ondrej@sury.org>  Mon, 19 Sep 2005 10:27:13 +0200
+
 mod-vhost-ldap (0.2.6-1) unstable; urgency=low
 
-  * New upstream version.
+  * New upstream release.
 
  -- Ondřej Surý <ondrej@sury.org>  Fri, 16 Sep 2005 10:13:25 +0200
 
