@@ -75,6 +75,9 @@ typedef struct mod_vhost_ldap_config_t {
     int have_ldap_url;			/* Set if we have found an LDAP url */
 
     int secure;				/* True if SSL connections are requested */
+
+    char *fallback;                     /* Fallback virtual host */
+
 } mod_vhost_ldap_config_t;
 
 typedef struct mod_vhost_ldap_request_t {
@@ -118,6 +121,7 @@ mod_vhost_ldap_create_server_config (apr_pool_t *p, server_rec *s)
     conf->binddn = NULL;
     conf->bindpw = NULL;
     conf->deref = always;
+    conf->fallback = NULL;
 
     return conf;
 }
@@ -165,6 +169,8 @@ mod_vhost_ldap_merge_server_config(apr_pool_t *p, void *parentv, void *childv)
 
     conf->binddn = (child->binddn ? child->binddn : parent->binddn);
     conf->bindpw = (child->bindpw ? child->bindpw : parent->bindpw);
+
+    conf->fallback = (child->fallback ? child->fallback : parent->fallback);
 
     return conf;
 }
@@ -280,7 +286,7 @@ static const char *mod_vhost_ldap_set_enabled(cmd_parms *cmd, void *dummy, int e
 {
     mod_vhost_ldap_config_t *conf =
 	(mod_vhost_ldap_config_t *)ap_get_module_config(cmd->server->module_config,
-							 &vhost_ldap_module);
+							&vhost_ldap_module);
 
     conf->enabled = (enabled) ? MVL_ENABLED : MVL_DISABLED;
 
@@ -291,7 +297,7 @@ static const char *mod_vhost_ldap_set_binddn(cmd_parms *cmd, void *dummy, const 
 {
     mod_vhost_ldap_config_t *conf =
 	(mod_vhost_ldap_config_t *)ap_get_module_config(cmd->server->module_config,
-							 &vhost_ldap_module);
+							&vhost_ldap_module);
 
     conf->binddn = apr_pstrdup(cmd->pool, binddn);
     return NULL;
@@ -301,7 +307,7 @@ static const char *mod_vhost_ldap_set_bindpw(cmd_parms *cmd, void *dummy, const 
 {
     mod_vhost_ldap_config_t *conf =
 	(mod_vhost_ldap_config_t *)ap_get_module_config(cmd->server->module_config,
-							 &vhost_ldap_module);
+							&vhost_ldap_module);
 
     conf->bindpw = apr_pstrdup(cmd->pool, bindpw);
     return NULL;
@@ -335,6 +341,16 @@ static const char *mod_vhost_ldap_set_deref(cmd_parms *cmd, void *dummy, const c
     return NULL;
 }
 
+static const char *mod_vhost_ldap_set_fallback(cmd_parms *cmd, void *dummy, const char *fallback)
+{
+    mod_vhost_ldap_config_t *conf =
+	(mod_vhost_ldap_config_t *)ap_get_module_config(cmd->server->module_config,
+							&vhost_ldap_module);
+
+    conf->fallback = apr_pstrdup(cmd->pool, fallback);
+    return NULL;
+}
+
 command_rec mod_vhost_ldap_cmds[] = {
     AP_INIT_TAKE1("VhostLDAPURL", mod_vhost_ldap_parse_url, NULL, RSRC_CONF,
                   "URL to define LDAP connection. This should be an RFC 2255 compliant\n"
@@ -360,6 +376,11 @@ command_rec mod_vhost_ldap_cmds[] = {
                   "values \"never\", \"searching\", \"finding\", or \"always\". "
                   "Defaults to always."),
 
+    AP_INIT_TAKE1("VhostLDAPFallback", mod_vhost_ldap_set_fallback, NULL, RSRC_CONF,
+		  "Set default virtual host which will be used when requested hostname"
+		  "is not found in LDAP database. This option can be used to display"
+		  "\"virtual host not found\" type of page."),
+
     {NULL}
 };
 
@@ -379,6 +400,8 @@ mod_vhost_ldap_translate_name (request_rec * r)
     int result = 0;
     const char *dn = NULL;
     char *cgi;
+    const char *hostname = NULL;
+    int is_fallback = 0;
 
     mod_vhost_ldap_request_t *req =
 	(mod_vhost_ldap_request_t *)apr_pcalloc(r->pool, sizeof(mod_vhost_ldap_request_t));
@@ -402,10 +425,14 @@ start_over:
         return DECLINED;
     }
 
+    hostname = r->hostname;
+
+fallback:
+
     ap_log_rerror(APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0, r,
 		   "[mod_vhost_ldap.c]: translating %s", r->uri);
 
-    apr_snprintf(filtbuf, FILTER_LENGTH, "(&(%s)(|(apacheServerName=%s)(apacheServerAlias=%s)))", conf->filter, r->hostname, r->hostname);
+    apr_snprintf(filtbuf, FILTER_LENGTH, "(&(%s)(|(apacheServerName=%s)(apacheServerAlias=%s)))", conf->filter, hostname, hostname);
 
     result = util_ldap_cache_getuserdn(r, ldc, conf->url, conf->basedn, conf->scope,
 				       attributes, filtbuf, &dn, &vals);
@@ -419,12 +446,30 @@ start_over:
         }
     }
 
+    if ((result == LDAP_NO_SUCH_OBJECT)) {
+	if (conf->fallback && (is_fallback++ <= 0)) {
+	    ap_log_rerror(APLOG_MARK, APLOG_NOTICE|APLOG_NOERRNO, 0, r,
+			  "[mod_vhost_ldap.c] translate: "
+			  "virtual host %s not found, trying fallback %s",
+			  hostname, conf->fallback);
+	    hostname = conf->fallback;
+	    goto fallback;
+	}
+
+	ap_log_rerror(APLOG_MARK, APLOG_WARNING|APLOG_NOERRNO, 0, r,
+		      "[mod_vhost_ldap.c] translate: "
+		      "virtual host %s not found",
+		      hostname);
+
+	return DECLINED;
+    }
+
     /* handle bind failure */
     if (result != LDAP_SUCCESS) {
         ap_log_rerror(APLOG_MARK, APLOG_WARNING|APLOG_NOERRNO, 0, r, 
                       "[mod_vhost_ldap.c] translate: "
-                      "translate failed; VHost %s; URI %s[%s]",
-		      r->hostname, r->uri, ldap_err2string(result));
+                      "translate failed; virtual host %s; URI %s [%s]",
+		      hostname, r->uri, ldap_err2string(result));
 	return DECLINED;
     }
 
