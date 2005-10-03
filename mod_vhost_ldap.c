@@ -385,9 +385,10 @@ command_rec mod_vhost_ldap_cmds[] = {
 };
 
 #define FILTER_LENGTH MAX_STRING_LEN
-static int
-mod_vhost_ldap_translate_name (request_rec * r)
+static int mod_vhost_ldap_translate_name(request_rec *r)
 {
+    request_rec *top = (r->main)?r->main:r;
+    mod_vhost_ldap_request_t *reqc;
     apr_table_t *e;
     int failures = 0;
     const char **vals = NULL;
@@ -403,9 +404,10 @@ mod_vhost_ldap_translate_name (request_rec * r)
     const char *hostname = NULL;
     int is_fallback = 0;
 
-    mod_vhost_ldap_request_t *req =
+    reqc =
 	(mod_vhost_ldap_request_t *)apr_pcalloc(r->pool, sizeof(mod_vhost_ldap_request_t));
-    ap_set_module_config(r->request_config, &vhost_ldap_module, req);
+
+    ap_set_module_config(r->request_config, &vhost_ldap_module, reqc);
 
     // mod_vhost_ldap is disabled or we don't have LDAP Url
     if ((conf->enabled != MVL_ENABLED)||(!conf->have_ldap_url)) {
@@ -474,7 +476,7 @@ fallback:
     }
 
     /* mark the user and DN */
-    req->dn = apr_pstrdup(r->pool, dn);
+    reqc->dn = apr_pstrdup(r->pool, dn);
 
     /* Optimize */
     if (vals) {
@@ -482,22 +484,22 @@ fallback:
 	while (attributes[i]) {
 
 	    if (strcasecmp (attributes[i], "apacheServerName") == 0) {
-		req->name = apr_pstrdup (r->pool, vals[i]);
+		reqc->name = apr_pstrdup (r->pool, vals[i]);
 	    }
 	    else if (strcasecmp (attributes[i], "apacheServerAdmin") == 0) {
-		req->admin = apr_pstrdup (r->pool, vals[i]);
+		reqc->admin = apr_pstrdup (r->pool, vals[i]);
 	    }
 	    else if (strcasecmp (attributes[i], "apacheDocumentRoot") == 0) {
-		req->docroot = apr_pstrdup (r->pool, vals[i]);
+		reqc->docroot = apr_pstrdup (r->pool, vals[i]);
 	    }
 	    else if (strcasecmp (attributes[i], "apacheScriptAlias") == 0) {
-		req->cgiroot = apr_pstrdup (r->pool, vals[i]);
+		reqc->cgiroot = apr_pstrdup (r->pool, vals[i]);
 	    }
 	    else if (strcasecmp (attributes[i], "apacheSuexecUid") == 0) {
-		req->uid = apr_pstrdup(r->pool, vals[i]);
+		reqc->uid = apr_pstrdup(r->pool, vals[i]);
 	    }
 	    else if (strcasecmp (attributes[i], "apacheSuexecGid") == 0) {
-		req->gid = apr_pstrdup(r->pool, vals[i]);
+		reqc->gid = apr_pstrdup(r->pool, vals[i]);
 	    }
 	    i++;
 	}
@@ -510,10 +512,10 @@ fallback:
 		  "apacheDocumentRoot: %s, "
 		  "apacheScriptAlias: %s, "
 		  "apacheSuexecUid: %s, "
-		  "apacheSuexecGid: %s"
-		  , req->name, req->admin, req->docroot, req->cgiroot, req->uid, req->gid);
+		  "apacheSuexecGid: %s",
+		  reqc->name, reqc->admin, reqc->docroot, reqc->cgiroot, reqc->uid, reqc->gid);
 
-    if ((req->name == NULL)||(req->docroot == NULL)) {
+    if ((reqc->name == NULL)||(reqc->docroot == NULL)) {
         ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, r, 
                       "[mod_vhost_ldap.c] translate: "
                       "translate failed; ServerName or DocumentRoot not defined");
@@ -522,33 +524,33 @@ fallback:
 
     cgi = NULL;
   
-    if (req->cgiroot) {
+    if (reqc->cgiroot) {
 	cgi = strstr(r->uri, "cgi-bin/");
 	if (cgi && (cgi != r->uri + strspn(r->uri, "/"))) {
 	    cgi = NULL;
 	}
     }
     if (cgi) {
-	r->filename = apr_pstrcat (r->pool, req->cgiroot, cgi + strlen("cgi-bin"), NULL);
+	r->filename = apr_pstrcat (r->pool, reqc->cgiroot, cgi + strlen("cgi-bin"), NULL);
 	r->handler = "cgi-script";
 	apr_table_setn(r->notes, "alias-forced-type", r->handler);
     } else if (r->uri[0] == '/') {
-	r->filename = apr_pstrcat (r->pool, req->docroot, r->uri, NULL);
+	r->filename = apr_pstrcat (r->pool, reqc->docroot, r->uri, NULL);
     } else {
 	return DECLINED;
     }
 
-    r->server->server_hostname = apr_pstrdup (r->pool, req->name);
+    r->server->server_hostname = apr_pstrdup (top->pool, reqc->name);
 
-    if (req->admin) {
-	r->server->server_admin = apr_pstrdup (r->pool, req->admin);
+    if (reqc->admin) {
+	r->server->server_admin = apr_pstrdup (top->pool, reqc->admin);
     }
 
     // set environment variables
-    e = r->subprocess_env;
-    apr_table_addn (e, "SERVER_ROOT", req->docroot);
+    e = top->subprocess_env;
+    apr_table_addn (e, "SERVER_ROOT", reqc->docroot);
 
-    core->ap_document_root = apr_pstrdup(r->pool, req->docroot);
+    core->ap_document_root = apr_pstrdup(top->pool, reqc->docroot);
 
     ap_log_rerror(APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0, r,
 		  "[mod_vhost_ldap.c]: translated to %s", r->filename);
