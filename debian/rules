@@ -47,7 +47,6 @@ binary-arch: build install
 	dh_link
 	dh_strip
 	dh_compress
-	dh_fixperms -X var/lib/apache2/fastcgi -X var/lib/apache/fastcgi
 	dh_installdeb
 	dh_shlibdeps
 	dh_gencontrol
