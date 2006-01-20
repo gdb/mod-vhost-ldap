@@ -540,10 +540,10 @@ fallback:
 	return DECLINED;
     }
 
-    r->server->server_hostname = apr_pstrdup (top->pool, reqc->name);
+    top->server->server_hostname = apr_pstrdup (top->pool, reqc->name);
 
     if (reqc->admin) {
-	r->server->server_admin = apr_pstrdup (top->pool, reqc->admin);
+	top->server->server_admin = apr_pstrdup (top->pool, reqc->admin);
     }
 
     // set environment variables
