@@ -1,3 +1,10 @@
+mod-vhost-ldap (1.0.0-1) unstable; urgency=low
+
+  * New upstream release.
+  * Fix small memory leak when used in subrequest (e.g. fastcgi)
+
+ -- Ondřej Surý <ondrej@debian.org>  Mon, 30 Jan 2006 22:12:05 +0100
+
 mod-vhost-ldap (0.2.9-1) unstable; urgency=low
 
   * New upstream release.
