@@ -1,1 +1,15 @@
 * Put back TLS
+* general code review (use of per-directory-config ?)
+* implement php_admin_flag and php_admin_value setting for vhosts with ldap
+* implement directory access control, similar to location
+* implement directory/location aliasing between vhosts, based on ldap
+* implement logging-related directives for ldap-based vhosts
+* implement require group 
+* implement use of other authentication methods than basic, including X509, 
+and authentication based not only with apacheExtUserObject, but also with 
+classic posixAccount/Group, probably with use of other excellent modules
+like mod_authz_ldap and others..
+* testing with apache 2.2.x
+* testers are welcomed, probably some nullpointer and overflows possibility
+extists, anyway Apache The Greate works holds the line - I tested some
+generated module segfaults, and they doesn't break apache itself, module only.
