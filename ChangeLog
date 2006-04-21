@@ -1,3 +1,11 @@
+2006-04-21 Bart Vanbrabant <bart.vanbrabant@zoeloelip.be>
+	* VERSION: 1.0.1 release
+	* mod_vhost_ldap.c: add support for apache-2.2.x
+
+2006-01-30 Ondřej Surý <ondrej@sury.org>
+	* VERSION: 1.0.0 release
+	* Fix small memory leak when used in subrequest (e.g. fastcgi)
+	
 2005-10-03 Ondřej Surý <ondrej@sury.org>
 	* mod_vhost_ldap.c: add support for running from subrequest (ie. mod_fastcgi)
 	* VERSION: 0.2.9 release
