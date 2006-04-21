@@ -1,5 +1,5 @@
 version=2
 
-http://www.sury.org/dist/ \
+https://alioth.debian.org/project/showfiles.php?group_id=30740 \
 	mod-vhost-ldap-([\d.]+)\.tar\.gz \
 	debian uupdate

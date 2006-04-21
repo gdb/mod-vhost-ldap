@@ -1,8 +1,16 @@
 libapache2-mod-vhost-ldap and LDAP server support
 =================================================
 
-Your LDAP server needs to include mod_vhost_ldap.schema. If you do not use
-OpenLDAP you are on your own to build a schema.
+Your LDAP server needs to include mod_vhost_ldap.schema. If You want
+additional access control, then include apache_ext.schema also.
+If you do not use OpenLDAP you are on your own to build a schema.
+I used these lines:
+
+index   apacheServerName,apacheServerAlias,apacheDocumentRoot,apacheServerAdmin pres,eq
+index   apacheExtConfigUri,apacheExtConfigServerName pres,eq,sub
+index   apacheLocationOptionsDn,apacheExtConfigRequireValidUser,apacheExtConfigUserDn,apacheExtConfigUserServerName,apacheExtConfigObjectName pres,eq
+
+ -- Piotr Wadas <pwadas@jewish.org.pl> Fri 31 Mar 2006 20:00:08 +0100
 
 You should configure the LDAP server to maintain indices on apacheServerName,
 apacheServerAlias and anything you use in your additional search filter.
@@ -21,3 +29,148 @@ You can use cgi module instead.
 
  -- Ondřej Surý <ondrej@sury.org>  Tue, 30 Aug 2005 09:24:21 +0200
 
+
+Just run "make" to build the module and "make install" (as root) to install
+the module. This will use Apache's apxs to build/install from source.
+
+Have a look at vhost_ldap.conf to learn about configuration.
+
+Authentication and authorization works in the following way:
+
+1. Vhost configuration is checked in ldap
+At this step all requested attributes such as ServerName, ServerAlias etc.
+including apacheExtConfig attributes, are taken. If not - vhost is returned
+OK and goes after further request processing.
+
+2. If vhost has set 
+apacheExtConfigHasRequireLine = TRUE, AND AT LEAST ONE apacheLocationOptionsDn 
+is set pointing to apacheExtConfig object, vhost is marked to have auth/auth.
+
+3. Then request URI is checked - starting from /, if for URI or any of
+URIs below apacheExtConfigObject with apacheExtUri set for uri, is found below
+base dn set with VhostLDAPWebLocationConfigBaseDn, processing to generate
+require lines. Note, that whatever apacheExtConfigObjectName You set
+for configuration, it will appear on authentication dialog box as You'd
+specify it with AuthName directive. AuthType (basic) is in code.
+
+4. if apacheExtConfigRequireValidUser for matched extConfig object is 
+set to TRUE, then "require valid-user" is generated. 
+if apacheExtConfigRequireValidUser is set to FALSE, then
+there's another search performed, under webUsersbase, to find user names,
+for which apacheExtConfigUserServerName matches vhost original name.
+All usernames are appended for require line, which contains at least no-user 
+"nobody",
+if no user objects are found. so after, we have 
+require valid-user
+or
+require nobody username1 username2
+placed into apache config
+
+5. authentication phase - user password is checked with LDAP. Note, that
+it's checked agains two conditions - with apr_validate_password, and with clear
+text. So, in userPassword field, You can put password taken from .htaccess file 
+(or generated with htpasswd -n), or clear text, and it will be matched agains
+string comparison.
+
+6. Then, authorization phase - if for current URI on previously generated
+require line, basic-auth username is found, then access is granted. 
+
+7. In log You shoud have information, whether authentication is successed or 
+failed, and then information _ONLY_ if authorization denies access. 
+(authorization access granted is not logged, don't ask why :)
+
+MORE EXPLANATION:
+object of one of apacheExt* classess, have some dn-syntax attributes, which 
+should point like below:
+	
+*	one or more apacheLocationOptionsDn	| 	for vhost, 
+											pointing location config(s)
+											
+*	one or more apacheExtConfigUserDn	|	for location config,
+											pointing user object(s)
+											
+However this is for use with some external management GUI to keep track of
+what's going on - search is made for location on vhost level, and search is
+made for users on location level, because apr doesn't have convenient routines,
+which allows getting object directly based on its DN. So final result
+must be FOUND, not GET, and is found based on another attribute value, 
+eg. apacheExtConfigServerName for location config, 
+and apacheExtConfigUserServerName This should be
+implemented with ldap.h, or routines for apr should be created.
+
+IMPORTANT NOTE 1:
+All searches for users, and location configurations, are made with 
+apacheServerName attribute value of current vhost - no matter via which 
+alias You're accessing server. So YOU DON'T NEED TO ADD EACH serverAlias
+to UserObject, or configObject - just add serverName.
+The concept is, that when You want to block some resource, eg. some
+directory with Your pictures, You want it blocked for all aliases on current
+server, no matter how it's access. If You share the same directory under
+another vhost, you need to add this vhost serverName to location 
+extConfigServerName.
+
+IMPORTANT NOTE 2:
+Authentication and authorization with this module is dynamic, that's
+why advanced features like apache configstream are not used. Actually
+auth/authz information is build against each request, to make You able
+to manipulate access control information, without server restarting 
+(even graceful). Actually making graceful, is no problem - the point is,
+that if You edit Your LDAP with some external tool, 
+e.g. excellent phpldapadmin, You may not want this tool to execute or force
+(in any way) any kind of daemons restart. Another solution, is to put
+graceful into cron somewhere, however I guess dynamic access control 
+is more ee.., well, its better solution :)
+
+IMPORTANT NOTE 3:
+If Your changes in LDAP seems to not working, check some cacheTTL and
+other directives with apache ldap_module, You've read this module manual, 
+didn't You? :)
+
+
+TIPS and HINTS: 
+Enjoying LDAP power - You can have multiple values for some attributes.
+actually no matters how many values You set for apacheLocationOptionsDn
+(must be at least one), because search is made with uri and serverName.
+
+However, You can set more than one serverName with location object,
+if You want the have the same URI blocked on more than one webserver,
+eg. if Your vhosts has standard location "/statistics", You can
+block them for all vhosts you want, no matter, whether real statistics
+dir exists in filesystem, or not (auth/authz is made before returning data).
+Anyway defining the same location for different vhosts as separated object
+should work, however they should have different naming attribute.
+If You set two objects, for the same uri and different naming attribute, and
+the same vhost servername value, probably the first one found will be used,
+I didn't check.
+extConfigObject may also apply to more than one URI - the same. 
+You can also have the same user, valid for more than one vhost, exactly
+the same rules apply like above.
+One user can have more than one password.
+
+Actually defining separate objects, makes sens only if
+You want to be able to quickly enable/disable particular URI 
+(or user, or config, etc. etc.), instead of removing it, probably
+based on some attribute value defined elsewhere, and applied to ldap filter
+in mod-ldap-vhost configuration.
+
+DEVELOPER's NOTE:
+The main trick is, that ap_requires is used to SET requirelines using generated
+apr_array_header_t, based on some information source, before it's later used 
+in normal authz procedure, at appropriate authorization hook.
+
+TODOs (unsorted):
+* general code review (use of per-directory-config ?)
+* implement php_admin_flag and php_admin_value setting for vhosts with ldap
+* implement directory access control, similar to location
+* implement directory/location aliasing between vhosts, based on ldap
+* implement logging-related directives for ldap-based vhosts
+* implement require group 
+* implement use of other authentication methods than basic, including X509, 
+and authentication based not only with apacheExtUserObject, but also with 
+classic posixAccount/Group, probably with use of other excellent modules
+like mod_authz_ldap and others..
+* testing with apache 2.2.x
+
+* testers are welcomed, probably some nullpointer and overflows possibility
+extists, anyway Apache The Greate works holds the line - I tested some
+generated module segfaults, and they doesn't break apache itself, module only.

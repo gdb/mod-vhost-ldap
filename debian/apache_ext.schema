@@ -1,0 +1,80 @@
+#
+#
+#
+attributetype ( 1.1.2.5.4.133 NAME 'apacheLocationOptionsDn'
+	DESC 'apache Extended Config Object Location' 
+	SUP distinguishedName
+	)
+
+attributetype ( 1.1.2.5.4.134 NAME 'apacheExtConfigUri'
+	DESC 'apache Extended Config Uri' 
+	SUP name
+	EQUALITY caseIgnoreMatch
+	SUBSTR caseIgnoreSubstringsMatch
+	SYNTAX 1.3.6.1.4.1.1466.115.121.1.15{256}
+	SINGLE-VALUE
+	)
+
+attributetype ( 1.1.2.5.4.135 NAME 'apacheExtConfigRequireValidUser'
+	DESC 'apache Extended Config Require Type' 
+	SYNTAX 1.3.6.1.4.1.1466.115.121.1.7
+	EQUALITY booleanMatch
+	SINGLE-VALUE
+	)
+	
+attributetype ( 1.1.2.5.4.136 NAME 'apacheExtConfigServerName'
+	DESC 'apache Extended Config ServerName' 
+	SUP cn
+	)
+
+attributetype ( 1.1.2.5.4.137 NAME 'apacheExtConfigUserDn'
+	DESC 'apache Extended Config User Object Dn' 
+	SUP distinguishedName
+	)
+
+attributetype ( 1.1.2.5.4.139 NAME 'apacheExtConfigUserServerName'
+	DESC 'apache Extended Config User ServerName' 
+	SUP cn
+	)
+
+attributetype ( 1.1.2.5.4.140 NAME 'apacheExtConfigObjectName'
+	DESC 'apache Extended Config Object Name' 
+	SUP cn
+	SINGLE-VALUE
+	)
+
+attributetype ( 1.1.2.5.4.141 NAME 'apacheExtConfigHasRequireLine'
+	DESC 'determines whether apacheConfig has require Line(s)' 
+	SYNTAX 1.3.6.1.4.1.1466.115.121.1.7
+	EQUALITY booleanMatch
+	SINGLE-VALUE
+	)
+
+attributetype ( 1.1.2.5.4.138 NAME 'apacheExtConfigUserName'
+	DESC 'apache Extended Config UserName' 
+	SUP cn
+	SINGLE-VALUE
+	)
+
+objectclass ( 1.1.2.5.6.103 NAME 'apacheExtendedConfigLocation'
+	DESC 'This object class represents managed Group' 
+	MUST ( apacheLocationOptionsDn $ apacheExtConfigHasRequireLine )
+	AUXILIARY
+	)
+
+objectclass ( 1.1.2.5.6.104 NAME 'apacheExtendedConfigObject'
+	DESC 'This object class represents managed Group' 
+	MUST ( 	apacheExtConfigUri $ 
+			apacheExtConfigRequireValidUser $ 
+			apacheExtConfigServerName $
+			apacheExtConfigObjectName
+			) 
+	MAY ( apacheExtConfigUserDn )
+	AUXILIARY
+	)
+
+objectclass ( 1.1.2.5.6.105 NAME 'apacheExtendedConfigUserObject'
+	DESC 'This object class represents managed Group' 
+	MUST ( apacheExtConfigUserName $ apacheExtConfigUserServerName $ userPassword ) 
+	AUXILIARY
+	)
