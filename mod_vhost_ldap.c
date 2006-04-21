@@ -34,7 +34,7 @@
 #include "apr_reslist.h"
 #include "util_ldap.h"
 
-#ifndef APU_HAS_LDAP
+#if !defined(APU_HAS_LDAP) && !defined(APR_HAS_LDAP)
 #error mod_vhost_ldap requires APR-util to have LDAP support built in
 #endif
 
@@ -92,6 +92,27 @@ typedef struct mod_vhost_ldap_request_t {
 
 char *attributes[] =
   { "apacheServerName", "apacheDocumentRoot", "apacheScriptAlias", "apacheSuexecUid", "apacheSuexecGid", "apacheServerAdmin", 0 };
+
+#ifdef APR_HAS_LDAP
+static APR_OPTIONAL_FN_TYPE(uldap_connection_close) *util_ldap_connection_close;
+static APR_OPTIONAL_FN_TYPE(uldap_connection_find) *util_ldap_connection_find;
+static APR_OPTIONAL_FN_TYPE(uldap_cache_comparedn) *util_ldap_cache_comparedn;
+static APR_OPTIONAL_FN_TYPE(uldap_cache_compare) *util_ldap_cache_compare;
+static APR_OPTIONAL_FN_TYPE(uldap_cache_checkuserid) *util_ldap_cache_checkuserid;
+static APR_OPTIONAL_FN_TYPE(uldap_cache_getuserdn) *util_ldap_cache_getuserdn;
+static APR_OPTIONAL_FN_TYPE(uldap_ssl_supported) *util_ldap_ssl_supported;
+
+static void ImportULDAPOptFn(void)
+{
+    util_ldap_connection_close  = APR_RETRIEVE_OPTIONAL_FN(uldap_connection_close);
+    util_ldap_connection_find   = APR_RETRIEVE_OPTIONAL_FN(uldap_connection_find);
+    util_ldap_cache_comparedn   = APR_RETRIEVE_OPTIONAL_FN(uldap_cache_comparedn);
+    util_ldap_cache_compare     = APR_RETRIEVE_OPTIONAL_FN(uldap_cache_compare);
+    util_ldap_cache_checkuserid = APR_RETRIEVE_OPTIONAL_FN(uldap_cache_checkuserid);
+    util_ldap_cache_getuserdn   = APR_RETRIEVE_OPTIONAL_FN(uldap_cache_getuserdn);
+    util_ldap_ssl_supported     = APR_RETRIEVE_OPTIONAL_FN(uldap_ssl_supported);
+}
+#endif 
 
 static int mod_vhost_ldap_post_config(apr_pool_t *p, apr_pool_t *plog, apr_pool_t *ptemp, server_rec *s)
 {
@@ -185,6 +206,7 @@ static const char *mod_vhost_ldap_parse_url(cmd_parms *cmd,
 {
     int result;
     apr_ldap_url_desc_t *urld;
+    apr_ldap_err_t *result_err;
 
     mod_vhost_ldap_config_t *conf =
 	(mod_vhost_ldap_config_t *)ap_get_module_config(cmd->server->module_config,
@@ -194,21 +216,28 @@ static const char *mod_vhost_ldap_parse_url(cmd_parms *cmd,
 	         cmd->server, "[mod_vhost_ldap.c] url parse: `%s'", 
 	         url);
 
+#ifdef APR_HAS_LDAP /* for apache >= 2.2 */
+    result = apr_ldap_url_parse(cmd->pool, url, &(urld), &(result_err));
+    if (result != LDAP_SUCCESS) {
+        return result_err->reason;
+    }
+#else
     result = apr_ldap_url_parse(url, &(urld));
     if (result != LDAP_SUCCESS) {
         switch (result) {
-        case LDAP_URL_ERR_NOTLDAP:
-            return "LDAP URL does not begin with ldap://";
-        case LDAP_URL_ERR_NODN:
-            return "LDAP URL does not have a DN";
-        case LDAP_URL_ERR_BADSCOPE:
-            return "LDAP URL has an invalid scope";
-        case LDAP_URL_ERR_MEM:
-            return "Out of memory parsing LDAP URL";
-        default:
-            return "Could not parse LDAP URL";
+            case LDAP_URL_ERR_NOTLDAP:
+                return "LDAP URL does not begin with ldap://";
+            case LDAP_URL_ERR_NODN:
+                return "LDAP URL does not have a DN";
+            case LDAP_URL_ERR_BADSCOPE:
+                return "LDAP URL has an invalid scope";
+            case LDAP_URL_ERR_MEM:
+                return "Out of memory parsing LDAP URL";
+            default:
+                return "Could not parse LDAP URL";
         }
     }
+#endif
     conf->url = apr_pstrdup(cmd->pool, url);
 
     ap_log_error(APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0,
@@ -278,7 +307,9 @@ static const char *mod_vhost_ldap_parse_url(cmd_parms *cmd,
     }
 
     conf->have_ldap_url = 1;
+#ifdef APU_HAS_LDAP /* free only required for older apr */
     apr_ldap_free_urldesc(urld);
+#endif
     return NULL;
 }
 
@@ -607,6 +638,9 @@ mod_vhost_ldap_register_hooks (apr_pool_t * p)
     ap_hook_translate_name(mod_vhost_ldap_translate_name, NULL, NULL, APR_HOOK_MIDDLE);
 #ifdef HAVE_UNIX_SUEXEC
     ap_hook_get_suexec_identity(mod_vhost_ldap_get_suexec_id_doer, NULL, NULL, APR_HOOK_MIDDLE);
+#endif
+#ifdef APR_HAS_LDAP
+    ap_hook_optional_fn_retrieve(ImportULDAPOptFn,NULL,NULL,APR_HOOK_MIDDLE);
 #endif
 }
 
