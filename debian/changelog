@@ -1,3 +1,10 @@
+mod-vhost-ldap (1.0.1-1) unstable; urgency=low
+
+  * New upstream release.
+  * Add support for apache-2.2.x (Courtesy of Bart Vanbrabant)
+
+ -- Ondřej Surý <ondrej@debian.org>  Fri, 21 Apr 2006 10:57:06 +0200
+
 mod-vhost-ldap (1.0.0-1) unstable; urgency=low
 
   * New upstream release.
