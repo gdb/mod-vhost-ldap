@@ -1,9 +1,21 @@
-mod-vhost-ldap (1.0.1-1) unstable; urgency=low
+mod-vhost-ldap (2.0.3-1) unstable; urgency=low
+
+  * New release, cleanup, fixes, new features and changes
+
+ -- Piotr Wadas <pwadas@jewish.org.pl>  Tue, 18 Jul 2006 12:45:12 +0100
+
+mod-vhost-ldap (2.0.0-2) unstable; urgency=low
+
+  * Fixed only-one-user issue
+
+ -- Piotr Wadas <pwadas@jewish.org.pl>  Sat, 1 Apr 2006 20:06:42 +0100
+
+mod-vhost-ldap (2.0.0-1) unstable; urgency=low
 
   * New upstream release.
-  * Add support for apache-2.2.x (Courtesy of Bart Vanbrabant)
+  * Added support for ldap-based basic auth/authz
 
- -- Ondřej Surý <ondrej@debian.org>  Fri, 21 Apr 2006 10:57:06 +0200
+ -- Piotr Wadas <pwadas@jewish.org.pl>  Tue, 28 Mar 2006 22:12:05 +0100
 
 mod-vhost-ldap (1.0.0-1) unstable; urgency=low
 
