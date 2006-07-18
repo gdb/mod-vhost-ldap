@@ -11,3 +11,4 @@ mod_vhost_ldap.spec
 README
 TODO
 VERSION
+apache_ext.schema
