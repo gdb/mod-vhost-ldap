@@ -1,0 +1,17 @@
+index apacheExtConfigServerName              pres,eq,sub
+index apacheExtConfigUri                     pres,eq,sub
+index apacheExtConfigPath                    pres,eq,sub
+index apacheAliasConfigSourceUri             pres,eq,sub
+index apacheAliasConfigTargetDir             pres,eq,sub
+index apacheAliasConfigServerName            pres,eq,sub
+index apacheDocumentRoot                     pres,eq
+index apacheExtConfigObjectName              pres,eq
+index apacheExtConfigRequireValidUser        pres,eq
+index apacheExtConfigUserDn                  pres,eq
+index apacheExtConfigUserServerName          pres,eq
+index apacheLocationOptionsDn                pres,eq
+index apacheAliasConfigOptionsDn             pres,eq
+index apacheAliasConfigObjectName            pres,eq
+index apacheServerAdmin                      pres,eq
+index apacheServerAlias                      pres,eq
+index apacheServerName                       pres,eq
