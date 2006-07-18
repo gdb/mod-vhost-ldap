@@ -1,0 +1,59 @@
+#
+#
+#
+
+attributetype ( 1.1.2.5.4.175 NAME 'apacheAliasesConfigEnabled'
+	DESC 'determines whether apacheConfig has aliases configured' 
+	SYNTAX 1.3.6.1.4.1.1466.115.121.1.7
+	EQUALITY booleanMatch
+	SINGLE-VALUE
+	)
+
+attributetype ( 1.1.2.5.4.176 NAME 'apacheAliasConfigOptionsDn'
+	DESC 'apache Aliases Config Object Location' 
+	SUP distinguishedName
+	)
+
+attributetype ( 1.1.2.5.4.177 NAME 'apacheAliasConfigObjectName'
+	DESC 'apache Alias Config Object Naming Attribute' 
+	SUP cn
+	SINGLE-VALUE
+	)
+
+attributetype ( 1.1.2.5.4.178 NAME 'apacheAliasConfigSourceUri'
+	DESC 'apache Alias Config source URI' 
+	SUP name
+	EQUALITY caseIgnoreMatch
+	SUBSTR caseIgnoreSubstringsMatch
+	SYNTAX 1.3.6.1.4.1.1466.115.121.1.15{256}
+	)
+
+attributetype ( 1.1.2.5.4.179 NAME 'apacheAliasConfigTargetDir'
+	DESC 'apache Alias Config target directory' 
+	SUP name
+	EQUALITY caseIgnoreMatch
+	SUBSTR caseIgnoreSubstringsMatch
+	SYNTAX 1.3.6.1.4.1.1466.115.121.1.15{256}
+	SINGLE-VALUE
+	)
+
+attributetype ( 1.1.2.5.4.180 NAME 'apacheAliasConfigServerName'
+	DESC 'apache Alias Config ServerName' 
+	SUP cn
+	)
+
+objectclass ( 1.1.2.5.6.107 NAME 'apacheAliasesConfigLocation'
+	DESC 'This object class membership means vhost has directory or location aliases' 
+	MUST ( apacheAliasesConfigEnabled $ apacheAliasConfigOptionsDn )
+	AUXILIARY
+	)
+
+objectclass ( 1.1.2.5.6.108 NAME 'apacheAliasConfigObject'
+	DESC 'This object class represents alias entry properties'
+	MUST ( 	apacheAliasConfigSourceUri $ 
+			apacheAliasConfigServerName $
+			apacheAliasConfigTargetDir $
+			apacheAliasConfigObjectName
+			) 
+	AUXILIARY
+	)
