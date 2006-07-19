@@ -192,6 +192,8 @@ and in case II
 
 where _D_ is global user-defined filter, and other attributes
 have values the same as access control object.
+More details about used filters and global 
+user-defined filter you'll find in vhost_ldap.conf
 
 Finally, in both cases, if access control object
 has apacheExtConfigRequireValidUser = FALSE, user is authenticated, 
@@ -238,7 +240,8 @@ And you can have multiple aliases for virtualhost, and
 multiple virtual URI's for one target. 
 
 If you create entries, which coincidents, like two
-alias object for the same targets, or two uses with the same
+alias object which specify the same url and vhost, but 
+different targets, or two uses with the same
 logins and the same permissions but e.g. different passwords,
 only first found will be used (each matching is done only once), 
 and it's hard to predict which one this would actually be.
