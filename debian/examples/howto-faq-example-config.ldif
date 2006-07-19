@@ -1,0 +1,192 @@
+##########################################################################################
+##########################################################################################
+############# SKIP COMMENTED LINES TO SEE PURE LDIF FILE #################################
+##########################################################################################
+############# If particular access combination of pattern          #######################
+############# [([location+servername]|[directoryname])+username])  #######################
+############# does not work, first consult actually used filters   #######################
+############# presented in example vhost_ldap.conf, and then turn  #######################
+############# debugging logging with apache. there's very much log #######################
+############# output, including configuration and uri parsing      #######################
+############# and each search filter and retrieved variables       #######################
+############# processing.                                          ####################### 
+##########################################################################################
+##########################################################################################
+
+##### webserver definition
+dn: apacheServerName=internal,ou=virtualHosts,dc=foo,dc=bar
+objectClass: top
+objectClass: apacheConfig
+objectClass: organization
+##### object classess - for aliases and per-location auth
+##### you must include these
+objectClass: apacheExtendedConfigLocation
+objectClass: apacheAliasesConfigLocation
+o: apache
+apacheServerName: internal
+##### single-value
+apacheDocumentRoot: /var/www/internal
+##### multi-value (optional)
+apacheServerAlias: www.somedomain.com
+apacheServerAlias: www.internal
+##### whether aliases objects search should be performed
+##### for requests to this host (aliases are assigned
+##### to webserver and its uri name (virtual location)
+##### with this you can keep pointers to config objects assigned,
+##### but turn them off for vhost - if you set next two attrs
+##### to FALSE, location and aliases won't be searched for it,
+##### althoug *OptionsDn exists
+apacheAliasesConfigEnabled: TRUE
+apacheExtConfigHasRequireLine: TRUE
+##### next two are multi values, which mean you can define 
+##### many aliases and many protected location for vhost
+apacheAliasConfigOptionsDn: apacheAliasConfigObjectName=internal vhost alias one,ou=webAliases,dc=foo,dc=bar
+apacheLocationOptionsDn: apacheExtConfigObjectName=internal vhost access control,ou=webAccess,dc=foo,dc=bar
+
+##### heads up - access control configuration object
+dn: apacheExtConfigObjectName=internal vhost access control,ou=webAccess,dc=foo,dc=bar
+objectClass: organization
+objectClass: top
+##### required to work
+objectClass: apacheExtendedConfigObject
+o: apache
+##### next attribute determines whether this 
+##### configuration objects is of type "require valid-user" (TRUE)
+##### or "Require user1 user2 user3". This is actually related
+##### for user object search. if you set to true, lookup will
+##### search for userobjects which are under WucBaseDn 
+##### and have userobjectservername set to alias or servername
+##### of current vhost, if you set to false, apacheExtConfigUserDn
+##### will be processed to get userlist ("Require user1,user2,user3...")
+##### Require group usergroup not implemented yet
+apacheExtConfigRequireValidUser: TRUE
+##### this is usually naming attribute in the tree, anyway
+##### this is the value which appears in http auth prompt dialog
+apacheExtConfigObjectName: internal vhost access control
+##### now - in this example, this access object keep access config
+##### of two kinds, per-location and per-directory. Next two
+##### attributes specified per-location assignment - perlocation
+##### access control will search for object which has current req servername
+##### and current req Uri. It is planned to be able to specify regexp
+##### as configUri and configPath, however it's not implemented yet.
+apacheExtConfigServerName: internal
+apacheExtConfigUri: /locationprotected
+apacheExtConfigPath: /var/www/internal/protected
+##### and one above is searched for every request, compared to request r->filename, 
+##### no matter what's current vhost servername is. 
+##### You can have any combination of these three lines including none of them.
+##### this object in general actually determines authorized users for resource,
+##### so you can have some userlist specification for many servernames and aliases,
+##### many uris (locations), and for many directories in the same object.
+##### you should only remember, that for perlocation access config
+##### servername/serveralias AND extConfigUri is matched, and for perdirectory
+##### only extConfigPath is searched. 
+##### and the last piece of the puzzle - if requirevaliduser is set to TRUE
+##### (meaning access control entry of type "Require valid-user" and any
+##### userobject which have servername and uri assigned is accepted
+##### if requirevaliduser is set to FALSE, (the meaning is: 
+##### "<this acl objectis NOT "Require valid-user">, which actually equals to:
+##### <this acl object is "Require user1 user2 user3">)
+##### list of attribute values for the following directive is processed.
+apacheExtConfigUserDn: apacheExtConfigUserName=pwadas,ou=People,dc=foo,dc=bar
+apacheExtConfigUserDn: apacheExtConfigUserName=otherUser,ou=People,dc=foo,dc=bar
+##### and, of course, you can have multiple values for this attribute
+##### (final list contains multiple usernames). Remember - username "nobody" is
+##### a special username, which is always appended to the result list, to avoid
+##### case, when you specify extConfigRequireValidUser to FALSE and do not specify
+##### any usernames (valid list <"require user" '[username] ...'> passed to apache
+##### must include at list one username. so creating user object entry 
+##### with extConfigUserName "nobody" is not recommended as it's always appended
+##### to the list.
+
+##### username object
+dn: apacheExtConfigUserName=pwadas,ou=People,dc=foo,dc=bar
+##### these object must contain one or more values for UserName attribute.
+##### keeping one value which should be naming attribute is recommended,
+##### however you can specify many loginnames for one user.
+##### If you create two userobject entries, and both of them will have
+##### attribute apacheExtConfigUserName with the value "johnny"
+##### (this may be hidden if UserName is not naming attribute)
+##### password will be matched ONLY against first entry found.
+##### which one will be found first when lookup is done with
+##### "(username=XXX)(servername=YYY)(uri=ZZZ)" is hard to predict,
+##### consult with openldap documentation, and watch the filter used.
+##### on the other hand - you can still have to userobjects with
+##### the same names for per-location access control, and if
+##### these object have different servernames - appropriate one
+##### will be found.
+apacheExtConfigUserName: pwadas
+apacheExtConfigUserName: someotherusername
+o: apache
+objectClass: organization
+objectClass: top
+##### this is required of course
+objectClass: apacheExtendedConfigUserObject
+##### now - you can have multiple passwords for one userobject
+##### no matter how many usernames it contains. 
+##### recognized password format is cleartext, 
+##### standard htpasswd-encrypted string (stored as cleartext)
+##### and linux-shadowlike value stored as {CRYPT}. This means,
+##### that you can combine posixAccount with webuser object,
+##### if you create object with appropriate classes, and
+##### userPassword attribute is the same for both classes.
+##### however in such situation extendedconfigUserName is
+##### still required and multi-value :-), so you'll probably want 
+##### keep posixAccount's "uid" and this have at least one the same value.
+##### of course this applies to any attribute which you map
+##### as "uid" in libnss-ldap configuration. with mod-vhost-ldap
+##### ONLY extConfigUserName is searched.
+userPassword: www
+userPassword: p00nQ0ftSC5cU
+userPassword: {CRYPT}$1$RG.pRvZh$Q0WZ8clsqtMUBRLFckoQg1
+##### one username object may contain multiple values
+##### for URI's and directories. which mean you can apply
+##### the same userobject to many resources. however
+##### with LocationUri, appropriate configUserServername must be
+##### defined to have this userobject matched with search lookup.
+apacheExtConfigUserDirectoryName: /var/www/internal/protected
+apacheExtConfigUserServerName: www.internal
+apacheExtConfigUserLocationUri: /protecteduri/
+
+##### and the most simple thing - aliasing object
+##### ObjectName has only naming usage, if any, as aliases
+##### doesn't have "prompts". however object must have some logical
+##### name, and uri or target is not a good choice - first because
+##### it always contain at least one "/", and second - it can
+##### have many values for sourceUri, so specifying it as naming
+##### attribute will always mask other values. 
+dn: apacheAliasConfigObjectName=internal vhost alias one,ou=webAliases,dc=foo,dc=bar
+objectClass: organization
+objectClass: top
+objectClass: apacheAliasConfigObject
+o: apache
+apacheAliasConfigObjectName: internal vhost alias one
+##### you can alias multiple uri's to one physical directory
+apacheAliasConfigSourceUri: /abcd/x
+apacheAliasConfigSourceUri: /some/url/anywhere
+##### remember - for aliases to work, you must specify at least
+##### one servername, as aliases (virtual uri's) are always
+##### related to virtualhost. anyway, if you specify multiple
+##### servername, the result will be the same uri for many
+##### virtualhosts, assigned to the same physical directory.
+##### with multiple servername, the same issues applied
+##### as with multiple loginnames - if it's not naming attribute
+##### you may get messed with many objects describing the same
+##### uri for the same vhost (multiple pairs for uri+servername).
+##### in this case first one found will be returned applied.
+##### (lookup is done in the way which returns ONE entry only).
+##### original mod_alias supports regular expression to specify
+##### this, in modvhostldap regexp is not supported yet.
+##### it's planned to be able to define regexp for servername and uri,
+##### and this will be even more flexible than original, as
+##### with original you can have regexp for uri only, and vhost
+##### is determined by context to which directive AliasMatch apply.
+apacheAliasConfigServerName: internal
+apacheAliasConfigServerName: www.someotherhost.com
+##### target dir is single-value. It could be multiple-value,
+##### to be able to store different pairs with one object, however
+##### on the other hand specifiying two or more physical directories
+##### for one URI doesn't make much sense, so to avoid mess
+##### it's single value.
+apacheAliasConfigTargetDir: /var/www/internal/protected
+##### and that's all folks :)
