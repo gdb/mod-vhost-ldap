@@ -1,0 +1,253 @@
+#####################################################################
+#####################################################################
+#####################################################################
+######## mod_vhost_ldap version 2.0.3 or later ######################
+#####################################################################
+
+  This file contains further considerations and usage examples
+of single-value access control entry attribute named
+"apacheExtConfigRequireValidUser".  Handling of user "validity" is 
+quite complicated and a little bit different than you could expect,
+so even I make sometimes misunderstanding if its current implemen-
+tation if this feature. 
+
+I'm going to explain here, how user validity is related to
+TWO types of resources, to which access control may be defined:
+
+I. Location access control (sometimes referred as uri access control,
+or virtual host access control)
+II. Directory access control (sometimes referred as physical location
+access control, or virtualhost-independent access control).
+
+Resource, depending on case, may mean "location" or "directory",
+or "both/no matter which kind of goods" :-).
+
+"Access control" usually means authentication + authorization (for
+polish readers - "uwierzytelnianie" and "autoryzacja"). 
+
+Authentication concerns about various ways of checking validity
+of username/password pair. It includes checking whether user
+exists in user-information source, and whether supplied password
+is valid for supplied user. There are hundreds of methods to 
+perform such tasks and apache supports many of them. However,
+mod_vhost_ldap currently support ONLY "basic" authentication,
+which conforms to checking whether user exists and whether applied
+password is correct for applied username. Some authentication
+methods may be used for authentication and authorization, some
+of them cannot (in some situation some information e.g. "realm" 
+provided by clients with authentication are used to authorize 
+them, sometimes not), however with modvhostldap authentication 
+and authorization are two different things. 
+
+Authorization concerns about checking whether particular user is 
+authorized to connect/use particular resource or particular
+kind of resource.Depending on authorization configuration,
+a resource may be available only to authenticated users, or
+for authenticated and not-authenticated users. Here we
+take care only about resources which are available only for
+authenticated users, so every not-authenticated user is not
+authorized to access particular resources. We don't discuss
+resources that don't need users to be authenticated to determine
+whether they're authorized or not, and vice versa - we assume,
+that every resource which has authentication defined, has
+user authorization status determined in some way, which will
+be explained below.
+
+Authentication is most simple of all of this - authenticated
+user is a user which provided username and password, and
+the pair was verified in some way. Http authentication status 
+information is then kept in http headers (usually until
+browser or browser-window is not reopened, depending on browser.
+
+First we define what's actually defined  by access control entry,
+and what is NOT defined by access control entry.
+
+In both cases, (location and directory) access control entry 
+defines whether particular resource is protected, however
+with directory, existing access entry means that directory
+has access control, and for location, existing access entry 
+means,that location is protected if and only if virtual host
+has access control enabled. you can enable/disable location access
+control for virtualhost, no matter whether access control
+entry for this location exists - on virtual host configuration
+level, by setting apacheExtConfigHasRequireLine attribute to
+TRUE or FALSE. if this attribute for vhost is FALSE, location
+access control won't be checked at all.
+Directory access control is always checked, no matter, whether
+virtualhost has access control enabled, or not. LAC is configured
+against particular address on (with) particular virtual server, DAC
+is configured against physical location of the resource, no matter
+whether it is accessed by some alias address, or some uri
+directly available under virtual server directory tree. (www.internal.com/ and below).
+Sometimes you may want particular file or directory
+on the disk to be protected, no matter which way user tries
+to access it, and sometimes you may want that some particular
+URL to be protected, if its accessed via www.domain.com, but
+opened e.g. from internal network (when it's accessed via www.inernal.com
+virtualhost, which is available for internally-conected clients.
+
+Directory access control has higher level of importance than
+location access control. Secured directory is secured no matter
+under which location it's accessed. If you secure directory
+as directory, and you secure location, location authentication
+and authorization will be checked first, and if allowed, directory 
+authentication and authorization will be checked, and if
+denied - user will be denied access. Authentication information
+are stored somewhere in http headers, so once authenticated
+user data will be passed to directory authentication.
+if the same user is authorized to access directory, access
+will be granted, if perlocation-authenticated user is not
+authorized to access directory, a prompt for another
+authentication data will be displayed. This may cause 
+to annoying results, as authentication information in http
+headers would be probably replaced (?), and new values won't 
+match location requirements. However i'm not sure how this
+works, I didn't tested it, it's possible that headers may contain
+information for location and directory, anyway it's recommended to 
+avoiding such situation, to always have clearance which set of access
+control settings are applied to the resource client wants access.
+In doubt I suggest you to configure per-directory access control,
+in almost all cases this is what you want.
+
+
+
+Now, for apache there are three ways in which user can be
+authorized for resource: user may be valid-user, user may
+be one of exactly defined authorized users, or user may 
+be member of authorized group. for details refer to apache documentation 
+of "Require" directives, anyway, modvhostldap currently
+supports valid-user and userlist, and this is difference,
+which is determined by apacheExtConfigRequireValidUser attribute.
+
+Location "Require" directive is created for
+each request for each vhost which have has LAC enabled
+(hasRequireLines = TRUE), and for which there's found
+access control object, which has the same or higher
+uri as its apacheExtConfigUri value.
+
+Directory Require directive is created
+if there's found access control object, which has 
+the same or higher directory as its apacheExtConfigPath value.
+
+Let's assume that if we're processing per-location config
+then servername of the http request is "internal", and uri of the
+request is "/abcd/xyz/protected/" (so we have
+http://internal/abcd/protected/xyz/"
+First is checked whether "internal" HasRequireLines is TRUE.
+If yes, then there's made a lookup for access control
+entry, which has apacheExtConfigServerName value = internal 
+and apacheExtConfigUri value set to a value,
+which is contained in '/abcd/protected/xyz' starting
+from left. so access control objects which have
+apacheExtConfigUri like: "/", "/abc", 
+"/abcd/xyz/protected" and "/abcd/xyz/protected/"
+will match. Finally, if the full string is reached,
+and access control object is not found, error is
+reported - (access control configured but no 
+access control objects found), and access control
+is not applied.
+
+And - other case - if we're processing per-directory config,
+then match is made exactly the same way, except that
+servername is not checked. If higher (shorter) or equal 
+directory value has acl object with this value - object
+is matched. If full string is reached and object is not found,
+access control is not applied, and no error is reported.
+
+Now ACL object, if found, is examined.
+If apacheExtConfigRequireValidUser attribute for it 
+has value set to "TRUE", then
+configuration is processed as "Require valid-user" 
+(access shoud be granted to any valid user).
+analog directive, 
+If it's "FALSE", then configuration
+is processed as "Require user ..." directive, userlist 
+is created, and access is granted to any valid user, 
+which username is on the list. 
+List, if needed, is created depending on values
+of attribute apacheExtConfigUserDn which must in this
+case contain full distinguished names of the users,
+which should have access granted. Username "nobody"
+is always appended first, before appending attribute
+values (loginnames), to avoid situation, when
+apacheExtConfigRequireValidUser = FALSE, and no apacheExtConfigUserDn
+values exist in entry ("Require user" if defined, must contain at least one username).
+
+So access gets configured, and then it comes to authentication.
+Further processing depends whether it's case I or II.
+In case I - valid user, is user which matches the following filter:
+(&
+	(_D_)
+	(objectClass=apacheExtendedConfigUserObject)
+	(apacheExtConfigUserServerName=_A_)
+	(apacheExtConfigUserLocationUri=_G_)
+)
+
+and in case II
+(&
+	(_D_)
+	(objectClass=apacheExtendedConfigUserObject)
+	(apacheExtConfigUserDirectoryName=_E_)
+)
+
+where _D_ is global user-defined filter, and other attributes
+have values the same as access control object.
+
+Finally, in both cases, if access control object
+has apacheExtConfigRequireValidUser = FALSE, user is authenticated, 
+loginname is found on the list, access is granted, or
+of the apacheExtConfigRequireValidUser = TRUE,and user is authenticated,
+access is granted, otherwise access is denied.
+This final stage, in comparison to analog configuration files,
+is the same as checking context in which particular user has been
+defined - <Directory /some/dir> or <Location /abcd/xyz/protected>.
+Simply - with .htaccess context is determined based on
+the location of the .htaccess file, in common configuration
+context is determined by the context :-), and with ldap
+context is determined by attributes of the particular webuser.
+
+For each user object, supplied password is checked against 
+as clear text, htpasswd format, or unix crypt format, and with
+debug all of them are logged, and additionaly. information
+which one matched (or none) is logged too.
+
+So, to be short at last - access control has particular precendence,
+there are some differences between location and directory access
+processing. You always need to specify inside userobject 
+for which resource it is valid, and, additionaly, if you set 
+apacheExtConfigRequireValidUser=FALSE, then you need to
+put webuser object DN into apacheExtConfigUserDn attribute
+of the access entry related to this resource. Applied
+password is checked against mostly used formats.
+And, you can have multiple locations, directories and servernames
+for access config entries, and user entries, and (ugh),
+you can have multiple access control entries for virtualhost(s).
+
+If you get into mess, and things doesn't work, you can disable
+some part(s) of authentication process. any trouble with
+authentication won't impact rest of virtualhost filesystem.
+Aliased directiories are substituted first, so directory
+access control entries will apply only to final real-directory
+or file name.
+
+Aliasing match works similar way as Directory and Location
+match - there's a try to find object which define targed physical
+location for current URI, and this target (existing or not), 
+has precedence over (existing or not) URL part(s).
+And you can have multiple aliases for virtualhost, and
+multiple virtual URI's for one target. 
+
+If you create entries, which coincidents, like two
+alias object for the same targets, or two uses with the same
+logins and the same permissions but e.g. different passwords,
+only first found will be used (each matching is done only once), 
+and it's hard to predict which one this would actually be.
+
+Note, that all this stuff is of course checked before actual
+resource is returned to browser, so any of alias targets, or
+users defined as valid, doesn't need to be existing - if
+they don't exist, finally some HTTP error will be returned, but
+existence of objects doesn't affect processing itself.
+
+Have fun, feedback welcomed :)
+PW.
