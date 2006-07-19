@@ -245,6 +245,8 @@ different targets, or two uses with the same
 logins and the same permissions but e.g. different passwords,
 only first found will be used (each matching is done only once), 
 and it's hard to predict which one this would actually be.
+Creating users without passwords at all, is avoided by
+schema.
 
 Note, that all this stuff is of course checked before actual
 resource is returned to browser, so any of alias targets, or
