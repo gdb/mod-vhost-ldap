@@ -3,3 +3,4 @@ README
 debian/apache_alias.schema
 debian/apache_ext.schema
 debian/mod_vhost_ldap.schema
+debian/examples
