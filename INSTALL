@@ -136,8 +136,6 @@ in normal authz procedure, at appropriate authorization hook.
 TODOs (unsorted):
 * general code review (use of per-directory-config ?)
 * implement php_admin_flag and php_admin_value setting for vhosts with ldap
-* implement directory access control, similar to location
-* implement directory/location aliasing between vhosts, based on ldap
 * implement logging-related directives for ldap-based vhosts
 * implement require group 
 * implement use of other authentication methods than basic, including X509, 
