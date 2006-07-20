@@ -7,7 +7,7 @@ Build-Depends: debhelper (>> 3.0.0), apache2-threaded-dev|apache2-prefork-dev (>
 
 Package: libapache2-mod-vhost-ldap
 Architecture: any
-Depends: ${shlibs:Depends}, apache2-common
+Depends: ${shlibs:Depends}, apache2-common, apache2-modules, apache2
 Description: Apache 2 module for Virtual Hosting from LDAP
  mod-vhost-ldap is Apache 2.x module for storing and configuring
  Virtual Hosts from LDAP.  It supports servername aliasing, 
