@@ -6,6 +6,11 @@ functionality.  If you do not use OpenLDAP you are on your own to build a schema
 for each kind of functionality (core vhost, auth-perdir, auth-perlocation,
 auth-perdirectory). Temporarily remove cgi-suexec support, it
 will be added again in the way which cooperates with new aliasing
+Note for upgrades from previous versions - vhost-definition
+backward compatibility is kept, however directive names
+changed, so examine example vhost_ldap.conf in doc/examples,
+and replace directive names. Any unset directive will
+get some default value.
 
  -- Piotr Wadas <pwadas@jewish.org.pl> Tue 18 Jul 2006 11:33:24 +0100
 
