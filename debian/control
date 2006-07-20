@@ -3,7 +3,7 @@ Section: web
 Priority: optional
 Maintainer: Piotr Wadas <pwadas@jewish.org.pl>
 Standards-Version: 3.7.2
-Build-Depends: debhelper (>> 3.0.0), apache2-threaded-dev|apache2-prefork-dev (>= 2.0.50-10), libldap-dev
+Build-Depends: debhelper (>> 3.0.0), apache2-threaded-dev|apache2-prefork-dev (>= 2.0.50-10), libldap-dev, devscripts (>= 2.9.20), 
 
 Package: libapache2-mod-vhost-ldap
 Architecture: any
