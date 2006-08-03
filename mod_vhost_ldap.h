@@ -26,6 +26,7 @@
 #include "http_request.h"
 #include "apr_ldap.h"
 #include "apr_strings.h"
+#include "apr_tables.h"
 #include "apr_reslist.h"
 #include "util_ldap.h"
 #include "apr_md5.h"
