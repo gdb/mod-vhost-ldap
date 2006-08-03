@@ -63,6 +63,16 @@ static void *mvhl_dump_config_request ( mvhl_config *currentconf, request_rec *r
 	return NULL;
 }
 /******************************************************************/
+int header_trace(void *data, const char *key, const char *val)
+{
+   //usage: 
+   //apr_table_do(header_trace, r, r->headers_out);
+   //apr_table_do(header_trace, (void*)r, r->headers_out,"Content-type", "Content-length", NULL);
+   request_rec *r = (request_rec *)data;
+   ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r, "Header Field %s == %s", key, val);
+   return TRUE;
+}
+/******************************************************************/
 void log_dump_apr_array(request_rec * r, apr_array_header_t * arr, const char *prefix)
 {
     ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r, " Entering log_dump_apr_array");
@@ -200,7 +210,7 @@ static void mvhl_doextconfig(request_rec * r, char *extconfigattributes[], const
 	 * we got 6 attributes to search for, counting from 0 to 5
 	 */
 	int i = 0;
-	for ( i = 0; i <= 4; i++ ) {
+	for ( i = 0; i <= 5; i++ ) {
       ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r, " Vhost Access Control Iteration %d :: will get %s", i, extconfigattributes[i]);
       switch (i) {
 	/* 0 apacheExtConfigUri */
@@ -230,12 +240,12 @@ static void mvhl_doextconfig(request_rec * r, char *extconfigattributes[], const
 	ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r,
 		(extreqc->exturi ) ?
 		apr_pstrdup(r->pool, " \'%s\' extConfigUri has at least one URI value") : 
-    	apr_pstrdup(r->pool, " \'%s\' has extConfigUri assigned"), 
+    	apr_pstrdup(r->pool, " \'%s\' has no extConfigUri assigned"), 
 		extreqc->extconfname);
 	ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r,
 		(extreqc->extdir ) ?
 		apr_pstrdup(r->pool, " \'%s\' extConfigPath has at least one directory value") : 
-    	apr_pstrdup(r->pool, " \'%s\' has extConfig assigned"), 
+    	apr_pstrdup(r->pool, " \'%s\' has no extConfig assigned"), 
 		extreqc->extconfname);
 	ap_log_rerror(APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0, r,
 		/* following three lines evaluates to one string in which final argument (fourth line) is substituted */ 
@@ -258,7 +268,7 @@ static void mvhl_doextconfig(request_rec * r, char *extconfigattributes[], const
     
 }
 /******************************************************************/
-static void mvhl_doextuserconfig(request_rec * r, char *ldap_webuser_attributes[], const char **extuservals, mvhl_webuser * extuserreqc)
+static void mvhl_doextuserconfig(request_rec * r, char *ldap_webuser_attributes[], const char **extuservals, mvhl_webuser * extuserreqc, char * prefix)
 {
     ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r, " Entering extwebuser Config");
     /*
@@ -266,7 +276,7 @@ static void mvhl_doextuserconfig(request_rec * r, char *ldap_webuser_attributes[
 	 */
 	int i = 0;
 	for ( i = 0; i <= 4; i++ ) {
-	ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r, " Web user Iteration %d :: will get %s", i, ldap_webuser_attributes[i]);
+	ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r, "%s Web user Iteration %d :: will get %s", prefix, i, ldap_webuser_attributes[i]);
       switch (i) {
     	/* 0 apacheExtConfigUserName */
 		case 0:	
@@ -276,19 +286,18 @@ static void mvhl_doextuserconfig(request_rec * r, char *ldap_webuser_attributes[
 		case 1: 
 			extuserreqc->webuserserver = ( extuservals[i] ) ? (apr_array_header_t *) get_parsed_string_atrr_arr(r, extuservals[i], (const char *) ";") : NULL;
 			break;
-		/* 2 userPassword */
+		/* 2 apacheExtConfigUserDirectoryName */
 		case 2: 
-			extuserreqc->webuserpassword =	( extuservals[i] ) ? (apr_array_header_t *) get_parsed_string_atrr_arr(r, extuservals[i], (const char *) ";") : NULL;
-			break;
-		/* 3 apacheExtConfigUserDirectoryName */
-		case 3: 
 			extuserreqc->webuserdirectory =	( extuservals[i] ) ? (apr_array_header_t *) get_parsed_string_atrr_arr(r, extuservals[i], (const char *) ";") : NULL;
 			break;
-		case 4:
-		/* apacheExtConfigUserLocationUri */
+		case 3:
+		/* 3 apacheExtConfigUserLocationUri */
 			extuserreqc->webuserlocationuri = ( extuservals[i] ) ? (apr_array_header_t *) get_parsed_string_atrr_arr(r, extuservals[i], (const char *) ";") : NULL;
 			break;
-						
+		/* 4 userPassword */
+		case 4: 
+			extuserreqc->webuserpassword =	( extuservals[i] ) ? (apr_array_header_t *) get_parsed_string_atrr_arr(r, extuservals[i], (const char *) ";") : NULL;
+			break;
 		}
 	}
      ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r, "  Leaving extwebuser Config :: exit assignments");
@@ -362,20 +371,22 @@ static int mvhl_authenticate_basic_user(request_rec * r)
 {
 	ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r, " Entering mvhl_authenticate_basic_user");
 	const char *sent_pw;
-    mvhl_webuser *extuserreqc;
-    extuserreqc = (mvhl_webuser *) apr_pcalloc(r->pool, sizeof(mvhl_webuser));
+    mvhl_webuser *extuserreqc = (mvhl_webuser *) apr_pcalloc(r->pool, sizeof(mvhl_webuser));
 	int rc = ap_get_basic_auth_pw(r, &sent_pw);
 	if(rc != OK) return rc;
-	
+
 	if(strtrue(r->user) && strtrue(sent_pw)) {
 		int result = 0;
 		char userfilter[FILTER_LENGTH];
 		const char *dn = NULL;
 		const char **extuservals = NULL;
 		util_ldap_connection_t *ldc = NULL;
-		char *ldap_webuser_attributes[] = { "apacheExtConfigUserName", "apacheExtConfigUserServerName", "userPassword", 0 };
+		char *prefix = "mvhl_authenticate.. :";
+		char *ldap_webuser_attributes[] = { "apacheExtConfigUserName","apacheExtConfigUserServerName","apacheExtConfigUserDirectoryName","apacheExtConfigUserLocationUri","userPassword",0};
 		mvhl_config *conf = (mvhl_config *) ap_get_module_config(r->server->module_config, &vhost_ldap_module);
-		apr_snprintf(userfilter, FILTER_LENGTH, "(&(apacheExtConfigUserName=%s))", r->user);
+		
+		apr_snprintf(userfilter, FILTER_LENGTH, "(&(%s)(objectClass=apacheExtendedConfigUserObject)(apacheExtConfigUserName=%s))", conf->filter, r->user);
+		
 		ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r, " AuthUser search filter: %s", userfilter);
 		ldc = util_ldap_connection_find(r, conf->host, conf->port, conf->binddn, conf->bindpw, conf->deref, conf->secure);
 		result = util_ldap_cache_getuserdn(r, ldc, conf->url, conf->wucbasedn, conf->scope, ldap_webuser_attributes, userfilter, &dn, &extuservals);
@@ -384,7 +395,7 @@ static int mvhl_authenticate_basic_user(request_rec * r)
 		if(extuservals) {
 			ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r, " User %s found.", r->user);
 
-			mvhl_doextuserconfig(r, ldap_webuser_attributes, extuservals, extuserreqc);
+			mvhl_doextuserconfig(r, ldap_webuser_attributes, extuservals, extuserreqc, prefix);
 
 			int x = 0;
 			//we're checking for each password - if any matches, then we return immediately
@@ -789,7 +800,7 @@ static void apply_aliasing(mvhl_request *reqc, request_rec * r, mvhl_config *con
 static void apply_location_access_control(mvhl_request *reqc, request_rec * r, mvhl_config *conf, util_ldap_connection_t *ldc, const char *dn) {
 
 	if(reqc->has_reqlines == 1 && reqc->rqlocationlines) {
-		ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r,"This vhost has location access control configured, need to check if it's enabled for current uri");
+		ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r,"LAC: This vhost has location access control configured, need to check if it's enabled for current uri");
 		int result = 0;
 		int i = 0;
 		char extconffiltbuf[FILTER_LENGTH];
@@ -797,7 +808,7 @@ static void apply_location_access_control(mvhl_request *reqc, request_rec * r, m
 		char *extconfigattributes[] 	= { "apacheExtConfigUri","apacheExtConfigRequireValidUser","apacheExtConfigServerName","apacheExtConfigObjectName","apacheExtConfigUserDn","apacheExtConfigPath",0}; 
 		mvhl_extconfig_object *extreqc = (mvhl_extconfig_object *) apr_pcalloc(r->pool, sizeof(mvhl_extconfig_object));
 		char *buff =  NULL;
-		ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r, "Entering extConfig Location Objects search");
+		ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r, "LAC: Entering extConfig Location Objects search");
 		while(i <= strlen(apr_pstrdup(r->pool, r->uri)) && !extconfvals) {
 			i++;
 			buff = apr_pstrndup(r->pool, r->uri, i);
@@ -824,24 +835,24 @@ static void apply_location_access_control(mvhl_request *reqc, request_rec * r, m
 			 * site via ServerAlias name
 			 */
 			apr_snprintf(extconffiltbuf, FILTER_LENGTH,"(&(%s)(apacheExtConfigServerName=%s)(apacheExtConfigUri=%s))", conf->filter, reqc->name, buff);
-			ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r,"ExtConfig Location Object search filter: %s", extconffiltbuf);
+			ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r,"LAC: ExtConfig Location Object search filter: %s", extconffiltbuf);
 			result = util_ldap_cache_getuserdn(r, ldc, conf->url, conf->wlcbasedn, conf->scope, extconfigattributes, extconffiltbuf, &dn, &extconfvals);
 			//matched URI, if found, is returned anyway with extconfvals as ldap attribute value.
 		}
 
 		if(result != LDAP_SUCCESS) {
-			ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r,"This vhost has access control, but probably not for this URI, access config entry not found");
-			ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r,"Tried with ldap search filter: %s", extconffiltbuf);
+			ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r,"LAC: This vhost has access control, but probably not for this URI, access config entry not found");
+			ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r,"LAC: Tried with ldap search filter: %s", extconffiltbuf);
 		}
 		else 
 		{
 			
-			ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r,"This uri has access control, configuration object is found");
+			ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r,"LAC: This uri has access control, configuration object is found");
 			//we set all into extreqc struct
 			//ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r, "Entering extconfig buffer fill");
 			if(extconfvals) { mvhl_doextconfig(r, extconfigattributes, extconfvals, extreqc); }
 
-			ap_log_error(APLOG_MARK, APLOG_DEBUG, OK, NULL, "Entering ap_requires generation process");
+			ap_log_error(APLOG_MARK, APLOG_DEBUG, OK, NULL, "LAC: Entering ap_requires generation process");
 			core_dir_config *coredirconf = (core_dir_config *) ap_get_module_config(r->per_dir_config, &core_module);
 			coredirconf->ap_auth_name = extreqc->extconfname;
 			coredirconf->ap_auth_type = (char *) "basic";
@@ -854,7 +865,7 @@ static void apply_location_access_control(mvhl_request *reqc, request_rec * r, m
             char userfilter[FILTER_LENGTH];
             /* we'll search for user object with custom filter applied, which has assigned matched location name and which has assigned current servername */
             apr_snprintf(userfilter, FILTER_LENGTH, "(&(%s)(objectClass=apacheExtendedConfigUserObject)(apacheExtConfigUserServerName=%s)(apacheExtConfigUserLocationUri=%s))", conf->filter, reqc->name, buff);
-            ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r,"User search filter: %s", userfilter);
+            ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r,"LAC: User search filter: %s", userfilter);
 
             mvhl_webuser *extuserreqc = (mvhl_webuser *) apr_pcalloc(r->pool, sizeof(mvhl_webuser));
             int i = 0;    
@@ -864,36 +875,36 @@ static void apply_location_access_control(mvhl_request *reqc, request_rec * r, m
 				for (i = 0; i < extreqc->extusers->nelts; i++) {
 					const char **extuservals = NULL;
 					int result = 0;
-                    ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r, "User search basedn: %s", extuserdns[i]);
+                    ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r, "LAC: User search basedn: %s", extuserdns[i]);
                     //we don't use wucbasedn as we already know what webuser distinguishedname can be
-					char *ldap_webuser_attributes[] = { "apacheExtConfigUserName","apacheExtConfigUserServerName","userPassword", "apacheExtConfigUserDirectoryName", "apacheExtConfigUserLocationUri", 0};
+					char *ldap_webuser_attributes[] = { "apacheExtConfigUserName","apacheExtConfigUserServerName","apacheExtConfigUserDirectoryName","apacheExtConfigUserLocationUri","userPassword",0};
 					result = util_ldap_cache_getuserdn(r, ldc, conf->url, extuserdns[i], LDAP_SCOPE_BASE, ldap_webuser_attributes, userfilter, &dn, &extuservals);
 					if(extuservals) {
-                        ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r, "Val 0: %s", extuservals[0]);
-                        ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r, "Val 1: %s", extuservals[1]);
-                        ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r, "Val 2: %s", extuservals[2]);
-						mvhl_doextuserconfig(r, ldap_webuser_attributes, extuservals, extuserreqc);
-                        ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r, "current username: %s", extuserreqc->webusername);
+                        ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r, "LAC: Val 0: %s", extuservals[0]);
+                        ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r, "LAC: Val 1: %s", extuservals[1]);
+                        ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r, "LAC: Val 2: %s", extuservals[2]);
+                        char *prefix = "LAC: ";
+						mvhl_doextuserconfig(r, ldap_webuser_attributes, extuservals, extuserreqc,prefix);
+                        ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r, "LAC: current username: %s", extuserreqc->webusername);
                         userlist = apr_pstrcat(r->pool, userlist, " ", extuserreqc->webusername, NULL);
-                        ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r, "current userlist: %s", userlist);
+                        ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r, "LAC: current userlist: %s", userlist);
 					}
 				}
 			}
-			ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r, "final userlist: %s ", userlist);
-			ap_log_error(APLOG_MARK, APLOG_DEBUG, OK, NULL, "AuthName set to %s", coredirconf->ap_auth_name);
-			ap_log_error(APLOG_MARK, APLOG_DEBUG, OK, NULL, "AuthType set to %s", coredirconf->ap_auth_type);
-			ap_log_error(APLOG_MARK, APLOG_DEBUG, OK, NULL, "Preparing access control line");
+			ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r, "LAC: final userlist: %s ", userlist);
+			ap_log_error(APLOG_MARK, APLOG_DEBUG, OK, NULL, "LAC: AuthName set to %s", coredirconf->ap_auth_name);
+			ap_log_error(APLOG_MARK, APLOG_DEBUG, OK, NULL, "LAC: AuthType set to %s", coredirconf->ap_auth_type);
+			ap_log_error(APLOG_MARK, APLOG_DEBUG, OK, NULL, "LAC: Preparing access control line");
 			coredirconf->ap_requires = (apr_array_header_t *) get_ap_reqs(r->pool, extreqc, reqc->name, userlist);
 		}
 	}
 	else {
-		ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r, "This vhost is not configured for access control, or it is disabled via apacheExtConfigHasRequireLine = ( FALSE|not set) skipping..");
+		ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r, "LAC: This vhost is not configured for access control, or it is disabled via apacheExtConfigHasRequireLine = ( FALSE|not set) skipping..");
 	}
 }
 /******************************************************************/
 static void apply_directory_access_control(mvhl_request *reqc, request_rec * r, mvhl_config *conf, util_ldap_connection_t *ldc, const char *dn) {
 
-	ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r,"This vhost has directory access control configured, need to check if it's enabled for current filename");
 	int result = 0;
 	int i = 0;
 	char extconffiltbuf[FILTER_LENGTH];
@@ -902,7 +913,7 @@ static void apply_directory_access_control(mvhl_request *reqc, request_rec * r, 
 	mvhl_extconfig_object *extreqc 	= (mvhl_extconfig_object *) apr_pcalloc(r->pool, sizeof(mvhl_extconfig_object));
 	char *buff = NULL;
 	
-	ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r, "Entering extConfig Directory Objects search");
+	ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r, "DAC: Entering extConfig Directory Objects search");
 	while(i <= strlen(apr_pstrdup(r->pool, r->filename)) && !extconfvals) {
 		i++;
 		buff = apr_pstrndup(r->pool, r->filename, i);
@@ -929,24 +940,24 @@ static void apply_directory_access_control(mvhl_request *reqc, request_rec * r, 
 		 * site via ServerAlias name
 		 */
 		apr_snprintf(extconffiltbuf, FILTER_LENGTH,"(&(%s)(apacheExtConfigPath=%s))", conf->filter, buff);
-		ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r,"ExtConfig Directory Object search filter: %s", extconffiltbuf);
+		ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r,"DAC: ExtConfig Directory Object search filter: %s", extconffiltbuf);
 		result = util_ldap_cache_getuserdn(r, ldc, conf->url, conf->wlcbasedn, conf->scope, extconfigattributes, extconffiltbuf, &dn, &extconfvals);
 		//matched dir, if found, is returned anyway with extconfvals as ldap attribute value.
 	}
 
 	if(result != LDAP_SUCCESS) {
-		ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r,"This vhost has access control, but probably not for this directory, access config entry not found");
-		ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r,"Tried with ldap search filter: %s", extconffiltbuf);
+		ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r,"DAC: For current directory access config entry is not found");
+		ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r,"DAC: Tried with ldap search filter: %s", extconffiltbuf);
 	}
 	else 
 	{
 		
-		ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r,"This directory has access control, configuration object is found");
+		ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r,"DAC: This directory has access control, configuration object is found");
 		//we set all into extreqc struct
 		//ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r, "Entering extconfig buffer fill");
 		if(extconfvals) { mvhl_doextconfig(r, extconfigattributes, extconfvals, extreqc); }
 
-		ap_log_error(APLOG_MARK, APLOG_DEBUG, OK, NULL, "Entering ap_requires generation process");
+		ap_log_error(APLOG_MARK, APLOG_DEBUG, OK, NULL, "DAC: Entering ap_requires generation process");
 		core_dir_config *coredirconf = (core_dir_config *) ap_get_module_config(r->per_dir_config, &core_module);
 		coredirconf->ap_auth_name = extreqc->extconfname;
 		coredirconf->ap_auth_type = (char *) "basic";
@@ -959,9 +970,11 @@ static void apply_directory_access_control(mvhl_request *reqc, request_rec * r, 
         char userfilter[FILTER_LENGTH];
         /* we'll search for user object with custom filter applied, which has assigned matched directory name */
         apr_snprintf(userfilter, FILTER_LENGTH, "(&(%s)(objectClass=apacheExtendedConfigUserObject)(apacheExtConfigUserDirectoryName=%s))", conf->filter, buff);
-        ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r,"User search filter: %s", userfilter);
+        ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r,"DAC: User search filter: %s", userfilter);
 
         mvhl_webuser *extuserreqc = (mvhl_webuser *) apr_pcalloc(r->pool, sizeof(mvhl_webuser));
+		char *ldap_webuser_attributes[] = { "apacheExtConfigUserName","apacheExtConfigUserServerName","apacheExtConfigUserDirectoryName","apacheExtConfigUserLocationUri","userPassword",0};
+
         int i = 0;    
 		if(extreqc->extusers) {
             log_dump_apr_array(r,extreqc->extusers,"extUser");
@@ -969,26 +982,28 @@ static void apply_directory_access_control(mvhl_request *reqc, request_rec * r, 
 			for (i = 0; i < extreqc->extusers->nelts; i++) {
 				const char **extuservals = NULL;
 				int result = 0;
-                ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r, "User search basedn: %s", extuserdns[i]);
+                ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r, "DAC: User search basedn: %s", extuserdns[i]);
                 //we don't use wucbasedn as we already know what webuser distinguishedname can be
-				char *ldap_webuser_attributes[] = { "apacheExtConfigUserName","apacheExtConfigUserServerName","userPassword", "apacheExtConfigUserDirectoryName", "apacheExtConfigUserLocationUri", 0};
+
 				result = util_ldap_cache_getuserdn(r, ldc, conf->url, extuserdns[i], LDAP_SCOPE_BASE, ldap_webuser_attributes, userfilter, &dn, &extuservals);
 				if(extuservals) {
-                    ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r, "Val 0: %s", extuservals[0]);
-                    ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r, "Val 1: %s", extuservals[1]);
-                    ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r, "Val 2: %s", extuservals[2]);
-					mvhl_doextuserconfig(r, ldap_webuser_attributes, extuservals, extuserreqc);
-                    ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r, "current username: %s", extuserreqc->webusername);
+                    ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r, "DAC: Val 0: %s", extuservals[0]);
+                    ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r, "DAC: Val 1: %s", extuservals[1]);
+                    ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r, "DAC: Val 2: %s", extuservals[2]);
+					char *prefix = "DAC: ";
+					mvhl_doextuserconfig(r, ldap_webuser_attributes, extuservals, extuserreqc, prefix);
+                    ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r, "DAC: current username: %s", extuserreqc->webusername);
                     userlist = apr_pstrcat(r->pool, userlist, " ", extuserreqc->webusername, NULL);
-                    ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r, "current userlist: %s", userlist);
+                    ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r, "DAC: current userlist: %s", userlist);
 				}
 			}
 		}
 		ap_log_rerror(APLOG_MARK, APLOG_DEBUG | APLOG_NOERRNO, 0, r, "final userlist: %s ", userlist);
-		ap_log_error(APLOG_MARK, APLOG_DEBUG, OK, NULL, "AuthName set to %s", coredirconf->ap_auth_name);
-		ap_log_error(APLOG_MARK, APLOG_DEBUG, OK, NULL, "AuthType set to %s", coredirconf->ap_auth_type);
-		ap_log_error(APLOG_MARK, APLOG_DEBUG, OK, NULL, "Preparing access control line");
+		ap_log_error(APLOG_MARK, APLOG_DEBUG, OK, NULL, "DAC: AuthName set to %s", coredirconf->ap_auth_name);
+		ap_log_error(APLOG_MARK, APLOG_DEBUG, OK, NULL, "DAC: AuthType set to %s", coredirconf->ap_auth_type);
+		ap_log_error(APLOG_MARK, APLOG_DEBUG, OK, NULL, "DAC: Preparing access control line");
 		coredirconf->ap_requires = (apr_array_header_t *) get_ap_reqs(r->pool, extreqc, reqc->name, userlist);
+		
 	}
 	
 }
@@ -997,6 +1012,7 @@ static int mvhl_translate_name(request_rec * r)
 {
 	request_rec *top 			= r->main ? r->main : r;
 	apr_table_t *e 				= top->subprocess_env;
+	apr_table_do(header_trace, r, r->headers_in, NULL);
 	
 	//module config and current request config objects
 	mvhl_config *conf 			= (mvhl_config *) ap_get_module_config(r->server->module_config, &vhost_ldap_module);
@@ -1019,6 +1035,7 @@ static int mvhl_translate_name(request_rec * r)
 	//heart of the system :)	
 	if ( conf->enabled == 0 || ! apply_vhost(conf, hostname, r, ldc, dn, reqc ) )  return DECLINED;  
 	if (conf->alias_enabled > 0 ) apply_aliasing(reqc, r, conf, ldc, dn);
+	
 	if (conf->loc_auth_enabled > 0 ) apply_location_access_control(reqc, r, conf, ldc, dn);
 	if (conf->dir_auth_enabled > 0 ) apply_directory_access_control(reqc, r, conf, ldc, dn);
 	
@@ -1030,8 +1047,12 @@ static int mvhl_translate_name(request_rec * r)
 	if(reqc->admin) {top->server->server_admin = apr_pstrdup(top->pool, reqc->admin); }
 
 	// set environment variables
-	apr_table_addn(e, "SERVER_ROOT", reqc->docroot);
+	apr_table_addn(e, "SERVER_ROOT", reqc->docroot);	
 	core->ap_document_root = apr_pstrdup(top->pool, reqc->docroot);
+	
+	//apr_table_set(r->err_headers_out, "Content-type", "Content-type: text/html; charset=UTF-8");
+	//apr_table_set(r->headers_out, "Content-type", "Content-type: text/html; charset=UTF-8");
+	
 	return OK;
 }
 /******************************************************************/
