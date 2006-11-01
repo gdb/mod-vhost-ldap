@@ -1,9 +1,9 @@
 mod-vhost-ldap (1.2.0-1) unstable; urgency=low
 
   * New upstream release (adds apache-2.2 support)
-  * Add support for apache-2.2
+  * Fix FTBFS with apache-2.2 (Closes: #393021)
 
- -- Ondřej Surý <ondrej@debian.org>  Wed,  1 Nov 2006 13:05:27 +0100
+ -- Ondřej Surý <ondrej@debian.org>  Wed,  1 Nov 2006 13:25:54 +0100
 
 mod-vhost-ldap (1.0.1-1) unstable; urgency=low
 
