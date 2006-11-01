@@ -29,6 +29,7 @@
 #include "http_core.h"
 #include "http_log.h"
 #include "http_request.h"
+#include "apr_version.h"
 #include "apr_ldap.h"
 #include "apr_strings.h"
 #include "apr_reslist.h"
@@ -93,7 +94,7 @@ typedef struct mod_vhost_ldap_request_t {
 char *attributes[] =
   { "apacheServerName", "apacheDocumentRoot", "apacheScriptAlias", "apacheSuexecUid", "apacheSuexecGid", "apacheServerAdmin", 0 };
 
-#ifdef APR_HAS_LDAP
+#if (APR_MAJOR_VERSION >= 1)
 static APR_OPTIONAL_FN_TYPE(uldap_connection_close) *util_ldap_connection_close;
 static APR_OPTIONAL_FN_TYPE(uldap_connection_find) *util_ldap_connection_find;
 static APR_OPTIONAL_FN_TYPE(uldap_cache_comparedn) *util_ldap_cache_comparedn;
@@ -206,7 +207,9 @@ static const char *mod_vhost_ldap_parse_url(cmd_parms *cmd,
 {
     int result;
     apr_ldap_url_desc_t *urld;
+#if (APR_MAJOR_VERSION >= 1)
     apr_ldap_err_t *result_err;
+#endif
 
     mod_vhost_ldap_config_t *conf =
 	(mod_vhost_ldap_config_t *)ap_get_module_config(cmd->server->module_config,
@@ -215,8 +218,8 @@ static const char *mod_vhost_ldap_parse_url(cmd_parms *cmd,
     ap_log_error(APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0,
 	         cmd->server, "[mod_vhost_ldap.c] url parse: `%s'", 
 	         url);
-
-#ifdef APR_HAS_LDAP /* for apache >= 2.2 */
+    
+#if (APR_MAJOR_VERSION >= 1)    /* for apache >= 2.2 */
     result = apr_ldap_url_parse(cmd->pool, url, &(urld), &(result_err));
     if (result != LDAP_SUCCESS) {
         return result_err->reason;
@@ -307,7 +310,7 @@ static const char *mod_vhost_ldap_parse_url(cmd_parms *cmd,
     }
 
     conf->have_ldap_url = 1;
-#ifdef APU_HAS_LDAP /* free only required for older apr */
+#if (APR_MAJOR_VERSION < 1) /* free only required for older apr */
     apr_ldap_free_urldesc(urld);
 #endif
     return NULL;
@@ -437,6 +440,7 @@ static int mod_vhost_ldap_translate_name(request_rec *r)
 
     reqc =
 	(mod_vhost_ldap_request_t *)apr_pcalloc(r->pool, sizeof(mod_vhost_ldap_request_t));
+    memset(reqc, 0, sizeof(mod_vhost_ldap_request_t)); 
 
     ap_set_module_config(r->request_config, &vhost_ldap_module, reqc);
 
@@ -639,7 +643,7 @@ mod_vhost_ldap_register_hooks (apr_pool_t * p)
 #ifdef HAVE_UNIX_SUEXEC
     ap_hook_get_suexec_identity(mod_vhost_ldap_get_suexec_id_doer, NULL, NULL, APR_HOOK_MIDDLE);
 #endif
-#ifdef APR_HAS_LDAP
+#if (APR_MAJOR_VERSION >= 1)
     ap_hook_optional_fn_retrieve(ImportULDAPOptFn,NULL,NULL,APR_HOOK_MIDDLE);
 #endif
 }
