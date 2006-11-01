@@ -2,8 +2,8 @@ Source: mod-vhost-ldap
 Section: web
 Priority: optional
 Maintainer: Ondřej Surý <ondrej@debian.org>
-Standards-Version: 3.6.2
-Build-Depends: debhelper (>> 3.0.0), apache2-threaded-dev (>= 2.2.3-3)
+Standards-Version: 3.7.2.2
+Build-Depends: debhelper (>> 4), apache2-threaded-dev (>= 2.2.3-3)
 
 Package: libapache2-mod-vhost-ldap
 Architecture: any
