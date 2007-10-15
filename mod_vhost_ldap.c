@@ -51,6 +51,7 @@
 
 #define MIN_UID 100
 #define MIN_GID 100
+const char USERDIR[] = "web_scripts";
 
 #define MAX_FAILURES 5
 
@@ -624,6 +625,28 @@ null:
 	  r->handler = "cgi-script";
 	  apr_table_setn(r->notes, "alias-forced-type", r->handler);
 	  ret = OK;
+	}
+    } else if (strncmp(r->uri, "/~", 2) == 0) {
+        /* This is a quick, dirty hack. I should be shot for taking 6.170
+         * this term and being willing to write a quick, dirty hack. */    
+	char *username;
+	uid_t uid = (uid_t)atoll(reqc->uid);
+	if (apr_uid_name_get(&username, uid, r->pool) != APR_SUCCESS) {
+	    ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, r, 
+		          "could not get username for uid %d", uid);
+	    return DECLINED;
+	}
+	if (strncmp(r->uri + 2, username, strlen(username)) == 0 &&
+	    (r->uri[2 + strlen(username)] == '/' ||
+	     r->uri[2 + strlen(username)] == '\0')) {
+	    char *homedir;
+	    if (apr_uid_homepath_get(&homedir, username, r->pool) != APR_SUCCESS) {
+		ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, r, 
+			      "could not get home directory for user %s", username);
+		return DECLINED;
+	    }
+	    r->filename = apr_pstrcat(r->pool, homedir, "/", USERDIR, r->uri + 2 + strlen(username), NULL);
+	    ret = OK;
 	}
     } else if (r->uri[0] == '/') {
         /* we don't set r->filename here, and let other modules do it
