@@ -471,7 +471,12 @@ fallback:
     ap_log_rerror(APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0, r,
 		   "[mod_vhost_ldap.c]: translating %s", r->uri);
 
-    apr_snprintf(filtbuf, FILTER_LENGTH, "(&(%s)(|(apacheServerName=%s)(apacheServerAlias=%s)))", conf->filter, hostname, hostname);
+    struct berval hostnamebv, shostnamebv;
+    ber_str2bv(hostname, 0, 0, &hostnamebv);
+    if (ldap_bv2escaped_filter_value(&hostnamebv, &shostnamebv) != 0)
+	goto null;
+    apr_snprintf(filtbuf, FILTER_LENGTH, "(&(%s)(|(apacheServerName=%s)(apacheServerAlias=%s)))", conf->filter, shostnamebv.bv_val, shostnamebv.bv_val);
+    ber_memfree(shostnamebv.bv_val);
 
     result = util_ldap_cache_getuserdn(r, ldc, conf->url, conf->basedn, conf->scope,
 				       attributes, filtbuf, &dn, &vals);
