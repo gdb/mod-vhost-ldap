@@ -89,6 +89,7 @@ typedef struct mod_vhost_ldap_request_t {
     char *cgiroot;			/* ScriptAlias */
     char *uid;				/* Suexec Uid */
     char *gid;				/* Suexec Gid */
+    char *saved_docroot;                /* Saved DocumentRoot */
 } mod_vhost_ldap_request_t;
 
 char *attributes[] =
@@ -557,6 +558,8 @@ fallback:
 	return DECLINED;
     }
 
+    /* Whole CGI logic is now flawed :-( */
+    /* FIXME START */
     cgi = NULL;
   
     if (reqc->cgiroot) {
@@ -569,11 +572,16 @@ fallback:
 	r->filename = apr_pstrcat (r->pool, reqc->cgiroot, cgi + strlen("cgi-bin"), NULL);
 	r->handler = "cgi-script";
 	apr_table_setn(r->notes, "alias-forced-type", r->handler);
-    } else if (r->uri[0] == '/') {
-	r->filename = apr_pstrcat (r->pool, reqc->docroot, r->uri, NULL);
-    } else {
-	return DECLINED;
     }
+    /* FIXME: END */
+
+    /* This is useless now - it maps to standard handlers */
+/*     } else if (r->uri[0] == '/') { */
+/*       /\*        r->filename = apr_pstrdup(r->pool, r->uri); *\/ */
+/* 	/\*	r->filename = apr_pstrcat (r->pool, reqc->docroot, r->uri, NULL); *\/ */
+/*     } else { */
+/* 	return DECLINED; */
+/*     } */
 
     top->server->server_hostname = apr_pstrdup (top->pool, reqc->name);
 
@@ -585,10 +593,38 @@ fallback:
     e = top->subprocess_env;
     apr_table_addn (e, "SERVER_ROOT", reqc->docroot);
 
+    reqc->saved_docroot = apr_pstrdup(top->pool, ap_document_root(r));
+
     core->ap_document_root = apr_pstrdup(top->pool, reqc->docroot);
 
     ap_log_rerror(APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0, r,
 		  "[mod_vhost_ldap.c]: translated to %s", r->filename);
+
+    ap_log_rerror(APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0, r,
+		  "[mod_vhost_ldap.c]: ap_document_root set to: %s", ap_document_root(r));
+
+    ap_log_rerror(APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0, r,
+		  "[mod_vhost_ldap.c]: canonical_filename: %s", r->canonical_filename);
+
+    /* Hack to allow post-processing by other modules (mod_rewrite, mod_alias) */
+    return DECLINED;
+}
+
+static int mod_vhost_ldap_cleanup(request_rec * r)
+{
+    request_rec *top = (r->main)?r->main:r;
+
+    core_server_config * core =
+	(core_server_config *) ap_get_module_config(r->server->module_config, &core_module);
+
+    mod_vhost_ldap_request_t *reqc =
+      (mod_vhost_ldap_request_t *)ap_get_module_config(r->request_config,
+						       &vhost_ldap_module);
+
+    core->ap_document_root = apr_pstrdup(top->pool, reqc->saved_docroot);
+
+    ap_log_rerror(APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0, r,
+		  "[mod_vhost_ldap.c]: ap_document_root set back to: %s", ap_document_root(r));
 
     return OK;
 }
@@ -638,8 +674,15 @@ static ap_unix_identity_t *mod_vhost_ldap_get_suexec_id_doer(const request_rec *
 static void
 mod_vhost_ldap_register_hooks (apr_pool_t * p)
 {
+
+    /*
+     * Run before mod_rewrite
+     */
+    static const char * const aszRewrite[]={ "mod_rewrite.c", NULL };
+
     ap_hook_post_config(mod_vhost_ldap_post_config, NULL, NULL, APR_HOOK_MIDDLE);
-    ap_hook_translate_name(mod_vhost_ldap_translate_name, NULL, NULL, APR_HOOK_MIDDLE);
+    ap_hook_translate_name(mod_vhost_ldap_translate_name, NULL, aszRewrite, APR_HOOK_FIRST);
+    ap_hook_fixups(mod_vhost_ldap_cleanup, aszRewrite, NULL, APR_HOOK_MIDDLE);
 #ifdef HAVE_UNIX_SUEXEC
     ap_hook_get_suexec_identity(mod_vhost_ldap_get_suexec_id_doer, NULL, NULL, APR_HOOK_MIDDLE);
 #endif
