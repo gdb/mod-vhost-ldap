@@ -468,6 +468,7 @@ static int mod_vhost_ldap_translate_name(request_rec *r)
     char *cgi;
     const char *hostname = NULL;
     int is_fallback = 0;
+    int sleep = 1;
 
     reqc =
 	(mod_vhost_ldap_request_t *)apr_pcalloc(r->pool, sizeof(mod_vhost_ldap_request_t));
@@ -508,8 +509,13 @@ fallback:
     util_ldap_connection_close(ldc);
 
     /* sanity check - if server is down, retry it up to 5 times */
-    if (result == LDAP_SERVER_DOWN) {
+    if (AP_LDAP_IS_SERVER_DOWN(result) ||
+	(result == LDAP_TIMEOUT) ||
+	(result == LDAP_CONNECT_ERROR)) {
         if (failures++ <= 5) {
+	    /* Back-off exponentially */
+	    apr_sleep(apr_time_from_sec(sleep));
+	    sleep = sleep*2;
             goto start_over;
         } else {
 	    return HTTP_GATEWAY_TIME_OUT;
@@ -599,6 +605,7 @@ fallback:
 	}
     }
     if (cgi) {
+        /* Set exact filename for CGI script */
         cgi = apr_pstrcat(r->pool, reqc->cgiroot, cgi + strlen("cgi-bin"), NULL);
         if ((cgi = ap_server_root_relative(r->pool, cgi))) {
 	  ap_log_rerror(APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0, r,
@@ -608,9 +615,12 @@ fallback:
 	  apr_table_setn(r->notes, "alias-forced-type", r->handler);
 	}
     } else if (r->uri[0] == '/') {
-        /*      r->filename = apr_pstrdup(r->pool, r->uri); */
-        r->filename = apr_pstrcat (r->pool, reqc->docroot, r->uri, NULL);
+        /* we don't set r->filename here, and let other modules do it
+         * this allows other modules (mod_rewrite.c) to work as usual
+	 */
+        /* r->filename = apr_pstrcat (r->pool, reqc->docroot, r->uri, NULL); */
     } else {
+        /* We don't handle non-file requests here */
 	return DECLINED;
     }
 
@@ -622,8 +632,10 @@ fallback:
 
     reqc->saved_docroot = apr_pstrdup(top->pool, ap_document_root(r));
 
-    if (set_document_root(r, reqc->docroot) != OK)
+    result = set_document_root(r, reqc->docroot);
+    if (result != OK) {
         return HTTP_INTERNAL_SERVER_ERROR;
+    }
 
     ap_log_rerror(APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0, r,
 		  "[mod_vhost_ldap.c]: ap_server_root_relative [%s]",
@@ -643,10 +655,8 @@ static int mod_vhost_ldap_cleanup(request_rec * r)
       (mod_vhost_ldap_request_t *)ap_get_module_config(r->request_config,
 						       &vhost_ldap_module);
 
-    if (set_document_root(r, reqc->saved_docroot) != OK)
-        return HTTP_INTERNAL_SERVER_ERROR;
-
-    return OK;
+    /* Set ap_document_root back to saved value */
+    return set_document_root(r, reqc->saved_docroot);
 }
 
 #ifdef HAVE_UNIX_SUEXEC
