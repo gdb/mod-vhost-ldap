@@ -567,9 +567,14 @@ fallback:
 	}
     }
     if (cgi) {
-	r->filename = apr_pstrcat (r->pool, reqc->cgiroot, cgi + strlen("cgi-bin"), NULL);
-	r->handler = "cgi-script";
-	apr_table_setn(r->notes, "alias-forced-type", r->handler);
+        cgi = apr_pstrcat (r->pool, reqc->cgiroot, cgi + strlen("cgi-bin"), NULL);
+        if ((cgi = ap_server_root_relative(r->pool, cgi))) {
+	  ap_log_rerror(APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0, r,
+			"[mod_vhost_ldap.c]: ap_document_root is: %s", ap_document_root(r));
+	  r->filename = cgi;
+	  r->handler = "cgi-script";
+	  apr_table_setn(r->notes, "alias-forced-type", r->handler);
+	}
     } else if (r->uri[0] == '/') {
         /*      r->filename = apr_pstrdup(r->pool, r->uri); */
 	/*	r->filename = apr_pstrcat (r->pool, reqc->docroot, r->uri, NULL); */
@@ -582,6 +587,9 @@ fallback:
     if (reqc->admin) {
 	top->server->server_admin = apr_pstrdup (top->pool, reqc->admin);
     }
+
+    ap_log_rerror(APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0, r,
+		  "[mod_vhost_ldap.c]: ap_server_root_relative(%s) is: %s", r->filename, ap_server_root_relative(r->pool, r->filename));
 
     ap_log_rerror(APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0, r,
 		  "[mod_vhost_ldap.c]: ap_document_root is: %s", ap_document_root(r));
