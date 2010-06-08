@@ -470,7 +470,7 @@ static int mod_vhost_ldap_translate_name(request_rec *r)
     util_ldap_connection_t *ldc = NULL;
     int result = 0;
     const char *dn = NULL;
-    char *cgi;
+    char *cgi, *real;
     const char *hostname = NULL;
     int is_fallback = 0;
 
@@ -625,8 +625,10 @@ fallback:
 	top->server->server_admin = apr_pstrdup (top->pool, reqc->admin);
     }
 
+    real = apr_pstrcat(r->pool, reqc->docroot, r->uri);
+
     ap_log_rerror(APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0, r,
-		  "[mod_vhost_ldap.c]: ap_server_root_relative(%s) is: %s", apr_pstrcat(r->pool, reqc->docroot, r->uri), ap_server_root_relative(r->pool, r->filename));
+		  "[mod_vhost_ldap.c]: ap_server_root_relative(%s) is: %s", real, ap_server_root_relative(r->pool, real));
 
     ap_log_rerror(APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0, r,
 		  "[mod_vhost_ldap.c]: ap_document_root is: %s", ap_document_root(r));
@@ -637,7 +639,9 @@ fallback:
         return HTTP_INTERNAL_SERVER_ERROR;
 
     ap_log_rerror(APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0, r,
-		  "[mod_vhost_ldap.c]: ap_document_root set to: %s", ap_document_root(r));
+		  "[mod_vhost_ldap.c]: ap_document_root set to: [%s], relative [%s]",
+		  ap_document_root(r),
+		  ap_server_root_relative(r->pool, real));
 
     // set environment variables
     e = top->subprocess_env;
