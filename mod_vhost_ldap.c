@@ -637,10 +637,6 @@ fallback:
         return HTTP_INTERNAL_SERVER_ERROR;
     }
 
-    ap_log_rerror(APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0, r,
-		  "[mod_vhost_ldap.c]: ap_server_root_relative [%s]",
-		  ap_server_root_relative(r->pool, r->filename));
-
     // set environment variables
     e = top->subprocess_env;
     apr_table_addn(e, "DOCUMENT_ROOT", reqc->docroot);
