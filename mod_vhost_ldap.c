@@ -499,7 +499,7 @@ start_over:
 fallback:
 
     ap_log_rerror(APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0, r,
-		  "[mod_vhost_ldap.c]: translating hostname [%s], uri [%s], try [%d]", hostname, r->uri, failures);
+		  "[mod_vhost_ldap.c]: translating hostname [%s], uri [%s]", hostname, r->uri);
 
     apr_snprintf(filtbuf, FILTER_LENGTH, "(&(%s)(|(apacheServerName=%s)(apacheServerAlias=%s)))", conf->filter, hostname, hostname);
 
@@ -512,7 +512,9 @@ fallback:
     if (AP_LDAP_IS_SERVER_DOWN(result) ||
 	(result == LDAP_TIMEOUT) ||
 	(result == LDAP_CONNECT_ERROR)) {
-        if (failures++ <= 5) {
+        ap_log_rerror(APLOG_MARK, APLOG_WARNING|APLOG_NOERRNO, 0, r,
+		      "[mod_vhost_ldap.c]: lookup failure, retry number #[%d], sleeping for [%d] seconds", failures, sleep);
+        if (failures++ < 5) {
 	    /* Back-off exponentially */
 	    apr_sleep(apr_time_from_sec(sleep));
 	    sleep = sleep+failures;
