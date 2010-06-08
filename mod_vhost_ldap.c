@@ -465,7 +465,7 @@ static int mod_vhost_ldap_translate_name(request_rec *r)
     util_ldap_connection_t *ldc = NULL;
     int result = 0;
     const char *dn = NULL;
-    char *cgi, *real;
+    char *cgi;
     const char *hostname = NULL;
     int is_fallback = 0;
 
@@ -599,7 +599,7 @@ fallback:
 	}
     }
     if (cgi) {
-        cgi = apr_pstrcat (r->pool, reqc->cgiroot, cgi + strlen("cgi-bin"), NULL);
+        cgi = apr_pstrcat(r->pool, reqc->cgiroot, cgi + strlen("cgi-bin"), NULL);
         if ((cgi = ap_server_root_relative(r->pool, cgi))) {
 	  ap_log_rerror(APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0, r,
 			"[mod_vhost_ldap.c]: ap_document_root is: %s", ap_document_root(r));
@@ -609,7 +609,7 @@ fallback:
 	}
     } else if (r->uri[0] == '/') {
         /*      r->filename = apr_pstrdup(r->pool, r->uri); */
-	/*	r->filename = apr_pstrcat (r->pool, reqc->docroot, r->uri, NULL); */
+        r->filename = apr_pstrcat (r->pool, reqc->docroot, r->uri, NULL);
     } else {
 	return DECLINED;
     }
@@ -620,12 +620,6 @@ fallback:
 	top->server->server_admin = apr_pstrdup (top->pool, reqc->admin);
     }
 
-    /* Create real name */
-    apr_filepath_merge((char**)&real, reqc->docroot, r->uri, APR_FILEPATH_TRUENAME, r->pool);
-
-    ap_log_rerror(APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0, r,
-		  "[mod_vhost_ldap.c]: ap_server_root_relative(%s) is: %s", real, ap_server_root_relative(r->pool, real));
-
     reqc->saved_docroot = apr_pstrdup(top->pool, ap_document_root(r));
 
     if (set_document_root(r, reqc->docroot) != OK)
@@ -633,11 +627,11 @@ fallback:
 
     ap_log_rerror(APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0, r,
 		  "[mod_vhost_ldap.c]: ap_server_root_relative [%s]",
-		  ap_server_root_relative(r->pool, real));
+		  ap_server_root_relative(r->pool, r->filename));
 
     // set environment variables
     e = top->subprocess_env;
-    apr_table_addn (e, "DOCUMENT_ROOT", reqc->docroot);
+    apr_table_addn(e, "DOCUMENT_ROOT", reqc->docroot);
 
     /* Hack to allow post-processing by other modules (mod_rewrite, mod_alias) */
     return DECLINED;
@@ -651,9 +645,6 @@ static int mod_vhost_ldap_cleanup(request_rec * r)
 
     if (set_document_root(r, reqc->saved_docroot) != OK)
         return HTTP_INTERNAL_SERVER_ERROR;
-
-    ap_log_rerror(APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0, r,
-		  "[mod_vhost_ldap.c]: ap_document_root restored to: %s", ap_document_root(r));
 
     return OK;
 }
