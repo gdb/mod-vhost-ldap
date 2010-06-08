@@ -633,7 +633,7 @@ fallback:
 
     reqc->saved_docroot = apr_pstrdup(top->pool, ap_document_root(r));
 
-    if (set_document_root(r, NULL, reqc->docroot) != OK)
+    if (set_document_root(r, reqc->docroot) != OK)
         return HTTP_INTERNAL_SERVER_ERROR;
 
     ap_log_rerror(APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0, r,
@@ -654,7 +654,7 @@ static int mod_vhost_ldap_cleanup(request_rec * r)
       (mod_vhost_ldap_request_t *)ap_get_module_config(r->request_config,
 						       &vhost_ldap_module);
 
-    if (set_document_root(r, NULL, reqc->docroot) != OK)
+    if (set_document_root(r, reqc->saved_docroot) != OK)
         return HTTP_INTERNAL_SERVER_ERROR;
 
     ap_log_rerror(APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0, r,
