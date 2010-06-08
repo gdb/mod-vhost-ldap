@@ -7,6 +7,7 @@
 			    modules handle real filenames
 	* mod_vhost_ldap.c: Create and use function set_document_root inspired by apache2.2
 	* mod_vhost_ldap.c: Return correct error codes on failures and not DECLINED
+	* mod_vhost_ldap.c: Put translate_name hook at FIRST place
 	
 2006-11-01 Ondřej Surý <ondrej@sury.org>
 	* VERSION: 1.2.0 release
