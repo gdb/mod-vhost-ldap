@@ -620,13 +620,11 @@ fallback:
 	top->server->server_admin = apr_pstrdup (top->pool, reqc->admin);
     }
 
-    real = apr_pstrcat(r->pool, reqc->docroot, r->uri);
+    /* Create real name */
+    apr_filepath_merge((char**)&real, reqc->docroot, r->uri, APR_FILEPATH_TRUENAME, r->pool);
 
     ap_log_rerror(APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0, r,
 		  "[mod_vhost_ldap.c]: ap_server_root_relative(%s) is: %s", real, ap_server_root_relative(r->pool, real));
-
-    ap_log_rerror(APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0, r,
-		  "[mod_vhost_ldap.c]: ap_document_root is: %s", ap_document_root(r));
 
     reqc->saved_docroot = apr_pstrdup(top->pool, ap_document_root(r));
 
@@ -634,13 +632,11 @@ fallback:
         return HTTP_INTERNAL_SERVER_ERROR;
 
     ap_log_rerror(APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0, r,
-		  "[mod_vhost_ldap.c]: ap_document_root set to: [%s], relative [%s]",
-		  ap_document_root(r),
+		  "[mod_vhost_ldap.c]: ap_server_root_relative [%s]",
 		  ap_server_root_relative(r->pool, real));
 
     // set environment variables
     e = top->subprocess_env;
-    apr_table_addn (e, "SERVER_ROOT", reqc->docroot);
     apr_table_addn (e, "DOCUMENT_ROOT", reqc->docroot);
 
     /* Hack to allow post-processing by other modules (mod_rewrite, mod_alias) */
