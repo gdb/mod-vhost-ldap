@@ -1,0 +1,5 @@
+2010-06-08 Ondřej Surý <ondrej@sury.org>
+	* 2.0.0: Big change in internal logic.  mod_vhost_ldap doesn't
+	lookup files and directories itself, but only mangle internal
+	apache variables and let other modules do the work.  This in turn
+	allows other translate_name modules to work (namely mod_rewrite).
