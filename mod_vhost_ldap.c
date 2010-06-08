@@ -468,7 +468,7 @@ static int mod_vhost_ldap_translate_name(request_rec *r)
     char *cgi;
     const char *hostname = NULL;
     int is_fallback = 0;
-    int sleep = 1;
+    int sleep = 0;
 
     reqc =
 	(mod_vhost_ldap_request_t *)apr_pcalloc(r->pool, sizeof(mod_vhost_ldap_request_t));
@@ -515,7 +515,7 @@ fallback:
         if (failures++ <= 5) {
 	    /* Back-off exponentially */
 	    apr_sleep(apr_time_from_sec(sleep));
-	    sleep = sleep*2;
+	    sleep = sleep+failures;
             goto start_over;
         } else {
 	    return HTTP_GATEWAY_TIME_OUT;
