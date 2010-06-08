@@ -1,3 +1,13 @@
+2010-06-08 Ondřej Surý <ondrej@sury.org>
+	* VERSION: 2.0.0 release
+	* mod_vhost_ldap.c: Sleep for (fibonacci numbers) seconds after LDAP failure
+	* mod_vhost_ldap.c: Add a log WARNING when LDAP is unreachable
+	* mod_vhost_ldap.c: Don't set r->filename, return DECLINE on success, only
+			    mangle documentroot and others, and let other apache
+			    modules handle real filenames
+	* mod_vhost_ldap.c: Create and use function set_document_root inspired by apache2.2
+	* mod_vhost_ldap.c: Return correct error codes on failures and not DECLINED
+	
 2006-11-01 Ondřej Surý <ondrej@sury.org>
 	* VERSION: 1.2.0 release
 	* mod_vhost_ldap.c: release apache-2.2 version as 1.2.0
