@@ -499,7 +499,7 @@ start_over:
 fallback:
 
     ap_log_rerror(APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0, r,
-		  "[mod_vhost_ldap.c]: translating hostname [%s], uri [%s]", hostname, r->uri);
+		  "[mod_vhost_ldap.c]: translating hostname [%s], uri [%s], try [%d]", hostname, r->uri, failures);
 
     apr_snprintf(filtbuf, FILTER_LENGTH, "(&(%s)(|(apacheServerName=%s)(apacheServerAlias=%s)))", conf->filter, hostname, hostname);
 
