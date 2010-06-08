@@ -116,6 +116,43 @@ static void ImportULDAPOptFn(void)
 }
 #endif 
 
+/* Taken from server/core.c */
+static const char *set_document_root(request_rec *r, const char *arg)
+{
+    void *sconf = r->server->module_config;
+    core_server_config *conf = ap_get_module_config(sconf, &core_module);
+
+    /* Make it absolute, relative to ServerRoot */
+    ap_log_rerror(APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0, r, 
+		  "[mod_vhost_ldap.c] set_document_root: translating DocumentRoot [%s]",
+		  arg);
+    arg = ap_server_root_relative(r->pool, arg);
+    ap_log_rerror(APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0, r, 
+		  "[mod_vhost_ldap.c] set_document_root: relative DocumentRoot [%s]",
+		  arg);
+    if (arg == NULL) {
+        ap_log_rerror(APLOG_MARK, APLOG_WARNING|APLOG_NOERRNO, 0, r, 
+                      "[mod_vhost_ldap.c] set_document_root: DocumentRoot [%s] must be a directory",
+		      arg);
+
+        return HTTP_INTERNAL_SERVER_ERROR;
+    }
+
+    /* TODO: ap_configtestonly && ap_docrootcheck && */
+    if (apr_filepath_merge((char**)&conf->ap_document_root, NULL, arg,
+                           APR_FILEPATH_TRUENAME, r->pool) != APR_SUCCESS
+        || !ap_is_directory(r->pool, arg)) {
+
+        ap_log_rerror(APLOG_MARK, APLOG_STARTUP, 0,
+		      r,
+		      "[mod_vhost_ldap.c] set_document_root: Warning: DocumentRoot [%s] does not exist",
+		      arg);
+        conf->ap_document_root = arg;
+    }
+    return NULL;
+}
+
+
 static int mod_vhost_ldap_post_config(apr_pool_t *p, apr_pool_t *plog, apr_pool_t *ptemp, server_rec *s)
 {
     /* make sure that mod_ldap (util_ldap) is loaded */
