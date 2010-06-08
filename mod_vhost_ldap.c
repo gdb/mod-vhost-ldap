@@ -50,6 +50,8 @@
 #define MIN_UID 100
 #define MIN_GID 100
 
+#define MAX_FAILURES 5
+
 module AP_MODULE_DECLARE_DATA vhost_ldap_module;
 
 typedef enum {
@@ -517,7 +519,7 @@ fallback:
         sleep = sleep0 + sleep1;
         ap_log_rerror(APLOG_MARK, APLOG_WARNING|APLOG_NOERRNO, 0, r,
 		      "[mod_vhost_ldap.c]: lookup failure, retry number #[%d], sleeping for [%d] seconds", failures, sleep);
-        if (failures++ < 5) {
+        if (failures++ < MAX_FAILURES) {
 	    /* Back-off exponentially */
 	    apr_sleep(apr_time_from_sec(sleep));
 	    sleep0 = sleep1;
