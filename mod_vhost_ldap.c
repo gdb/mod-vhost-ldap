@@ -117,7 +117,7 @@ static void ImportULDAPOptFn(void)
 #endif 
 
 /* Taken from server/core.c */
-static const char *set_document_root(request_rec *r, const char *arg)
+static int set_document_root(request_rec *r, const char *arg)
 {
     void *sconf = r->server->module_config;
     core_server_config *conf = ap_get_module_config(sconf, &core_module);
@@ -149,7 +149,7 @@ static const char *set_document_root(request_rec *r, const char *arg)
 		      arg);
         conf->ap_document_root = arg;
     }
-    return NULL;
+    return OK;
 }
 
 
@@ -633,7 +633,8 @@ fallback:
 
     reqc->saved_docroot = apr_pstrdup(top->pool, ap_document_root(r));
 
-    set_document_root(r, NULL, reqc->docroot);
+    if (set_document_root(r, NULL, reqc->docroot) != OK)
+        return HTTP_INTERNAL_SERVER_ERROR;
 
     ap_log_rerror(APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0, r,
 		  "[mod_vhost_ldap.c]: ap_document_root set to: %s", ap_document_root(r));
@@ -653,7 +654,8 @@ static int mod_vhost_ldap_cleanup(request_rec * r)
       (mod_vhost_ldap_request_t *)ap_get_module_config(r->request_config,
 						       &vhost_ldap_module);
 
-    set_document_root(r, NULL, reqc->saved_docroot);
+    if (set_document_root(r, NULL, reqc->docroot) != OK)
+        return HTTP_INTERNAL_SERVER_ERROR;
 
     ap_log_rerror(APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0, r,
 		  "[mod_vhost_ldap.c]: ap_document_root restored to: %s", ap_document_root(r));
