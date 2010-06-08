@@ -430,8 +430,6 @@ static int mod_vhost_ldap_translate_name(request_rec *r)
     char filtbuf[FILTER_LENGTH];
     mod_vhost_ldap_config_t *conf =
 	(mod_vhost_ldap_config_t *)ap_get_module_config(r->server->module_config, &vhost_ldap_module);
-    core_server_config * core =
-	(core_server_config *) ap_get_module_config(r->server->module_config, &core_module);
     util_ldap_connection_t *ldc = NULL;
     int result = 0;
     const char *dn = NULL;
@@ -460,7 +458,7 @@ start_over:
     else {
         ap_log_rerror(APLOG_MARK, APLOG_WARNING|APLOG_NOERRNO, 0, r, 
                       "[mod_vhost_ldap.c] translate: no conf->host - weird...?");
-        return DECLINED;
+        return HTTP_INTERNAL_SERVER_ERROR;
     }
 
     hostname = r->hostname;
@@ -481,10 +479,12 @@ fallback:
     if (result == LDAP_SERVER_DOWN) {
         if (failures++ <= 5) {
             goto start_over;
-        }
+        } else {
+	    return HTTP_GATEWAY_TIME_OUT;
+	}
     }
 
-    if ((result == LDAP_NO_SUCH_OBJECT)) {
+    if (result == LDAP_NO_SUCH_OBJECT) {
 	if (conf->fallback && (is_fallback++ <= 0)) {
 	    ap_log_rerror(APLOG_MARK, APLOG_NOTICE|APLOG_NOERRNO, 0, r,
 			  "[mod_vhost_ldap.c] translate: "
@@ -499,7 +499,7 @@ fallback:
 		      "virtual host %s not found",
 		      hostname);
 
-	return DECLINED;
+	return HTTP_BAD_REQUEST;
     }
 
     /* handle bind failure */
@@ -508,7 +508,7 @@ fallback:
                       "[mod_vhost_ldap.c] translate: "
                       "translate failed; virtual host %s; URI %s [%s]",
 		      hostname, r->uri, ldap_err2string(result));
-	return DECLINED;
+	return HTTP_INTERNAL_SERVER_ERROR;
     }
 
     /* mark the user and DN */
@@ -555,11 +555,9 @@ fallback:
         ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, r, 
                       "[mod_vhost_ldap.c] translate: "
                       "translate failed; ServerName or DocumentRoot not defined");
-	return DECLINED;
+	return HTTP_INTERNAL_SERVER_ERROR;
     }
 
-    /* Whole CGI logic is now flawed :-( */
-    /* FIXME START */
     cgi = NULL;
   
     if (reqc->cgiroot) {
@@ -572,16 +570,12 @@ fallback:
 	r->filename = apr_pstrcat (r->pool, reqc->cgiroot, cgi + strlen("cgi-bin"), NULL);
 	r->handler = "cgi-script";
 	apr_table_setn(r->notes, "alias-forced-type", r->handler);
+    } else if (r->uri[0] == '/') {
+        /*      r->filename = apr_pstrdup(r->pool, r->uri); */
+	/*	r->filename = apr_pstrcat (r->pool, reqc->docroot, r->uri, NULL); */
+    } else {
+	return DECLINED;
     }
-    /* FIXME: END */
-
-    /* This is useless now - it maps to standard handlers */
-/*     } else if (r->uri[0] == '/') { */
-/*       /\*        r->filename = apr_pstrdup(r->pool, r->uri); *\/ */
-/* 	/\*	r->filename = apr_pstrcat (r->pool, reqc->docroot, r->uri, NULL); *\/ */
-/*     } else { */
-/* 	return DECLINED; */
-/*     } */
 
     top->server->server_hostname = apr_pstrdup (top->pool, reqc->name);
 
@@ -589,22 +583,20 @@ fallback:
 	top->server->server_admin = apr_pstrdup (top->pool, reqc->admin);
     }
 
-    // set environment variables
-    e = top->subprocess_env;
-    apr_table_addn (e, "SERVER_ROOT", reqc->docroot);
+    ap_log_rerror(APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0, r,
+		  "[mod_vhost_ldap.c]: ap_document_root is: %s", ap_document_root(r));
 
     reqc->saved_docroot = apr_pstrdup(top->pool, ap_document_root(r));
 
-    core->ap_document_root = apr_pstrdup(top->pool, reqc->docroot);
-
-    ap_log_rerror(APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0, r,
-		  "[mod_vhost_ldap.c]: translated to %s", r->filename);
+    set_document_root(r, NULL, reqc->docroot);
 
     ap_log_rerror(APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0, r,
 		  "[mod_vhost_ldap.c]: ap_document_root set to: %s", ap_document_root(r));
 
-    ap_log_rerror(APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0, r,
-		  "[mod_vhost_ldap.c]: canonical_filename: %s", r->canonical_filename);
+    // set environment variables
+    e = top->subprocess_env;
+    apr_table_addn (e, "SERVER_ROOT", reqc->docroot);
+    apr_table_addn (e, "DOCUMENT_ROOT", reqc->docroot);
 
     /* Hack to allow post-processing by other modules (mod_rewrite, mod_alias) */
     return DECLINED;
@@ -612,19 +604,14 @@ fallback:
 
 static int mod_vhost_ldap_cleanup(request_rec * r)
 {
-    request_rec *top = (r->main)?r->main:r;
-
-    core_server_config * core =
-	(core_server_config *) ap_get_module_config(r->server->module_config, &core_module);
-
     mod_vhost_ldap_request_t *reqc =
       (mod_vhost_ldap_request_t *)ap_get_module_config(r->request_config,
 						       &vhost_ldap_module);
 
-    core->ap_document_root = apr_pstrdup(top->pool, reqc->saved_docroot);
+    set_document_root(r, NULL, reqc->saved_docroot);
 
     ap_log_rerror(APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0, r,
-		  "[mod_vhost_ldap.c]: ap_document_root set back to: %s", ap_document_root(r));
+		  "[mod_vhost_ldap.c]: ap_document_root restored to: %s", ap_document_root(r));
 
     return OK;
 }
