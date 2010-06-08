@@ -1,0 +1,61 @@
+2006-11-01 Ondřej Surý <ondrej@sury.org>
+	* VERSION: 1.2.0 release
+	* mod_vhost_ldap.c: release apache-2.2 version as 1.2.0
+	
+2006-04-21 Bart Vanbrabant <bart.vanbrabant@zoeloelip.be>
+	* VERSION: 1.0.1 release
+	* mod_vhost_ldap.c: add support for apache-2.2.x
+
+2006-01-30 Ondřej Surý <ondrej@sury.org>
+	* VERSION: 1.0.0 release
+	* Fix small memory leak when used in subrequest (e.g. fastcgi)
+	
+2005-10-03 Ondřej Surý <ondrej@sury.org>
+	* mod_vhost_ldap.c: add support for running from subrequest (ie. mod_fastcgi)
+	* VERSION: 0.2.9 release
+
+2005-09-22 Ondřej Surý <ondrej@sury.org>
+	* mod_vhost_ldap.c: add support for Fallback Virtual Host
+	* VERSION: 0.2.8 release
+
+2005-09-19 Ondřej Surý <ondrej@sury.org>
+	* mod_vhost_ldap.c: add more information to log when vhost is not found
+	* VERSION: 0.2.7 release
+	
+2005-09-16 Ondřej Surý <ondrej@sury.org>
+	* mod_vhost_ldap.c: implement merge_server_config to allow different settings for different vhosts
+	* VERSION: 0.2.6 release
+
+2005-09-09 Ondřej Surý <ondrej@sury.org>
+	* mod_vhost.ldap.c: implement workaround for fault mod_ldap caching
+	                    http://issues.apache.org/bugzilla/show_bug.cgi?id=33901
+	* mod_vhost_ldap.c: change r->parsed_uri.path to more simpler r->uri
+	* vhost_ldap.conf: add note about mod_ldap module requirement
+	* VERSION: 0.2.5 release
+
+2005-08-30 Ondřej Surý <ondrej@sury.org>
+	* mod_vhost_ldap.c: use VERSION file as authoritative source for VERSION number
+	* mod_vhost_ldap.c: MIN_UID/MIN_GID lowered to 100/100 
+	* VERSION: 0.2.4 release
+	
+2005-08-17 Ondřej Surý <ondrej@sury.org>
+	* Change off-by-one error in minimum UID/GID [courtesy of Fabian Fagerholm]
+	* Fix LDAP schema (at last) [courtesy of Fabian Fagerholm]
+	* Release 0.2.3
+
+2005-08-16 Ondřej Surý <ondrej@sury.org>
+	* Works even without scriptAlias defined
+	* Fixed schema, include apacheScriptAlias, change conflicting UIDs of attributes
+	* DOCUMENT_ROOT variable is set correctly
+	* Fixed some typos
+	* Release 0.2.2
+
+2005-08-02 Ondřej Surý <ondrej@sury.org>
+	* Complete rewrite...
+	* Change apacheUsername to apacheSuexecUid and apacheSuexecGid
+	
+2005-05-25 Ondrej Sury <ondrej@sury.org>
+	* Version 0.2.0
+	* Renamed to mod_vhost_ldap
+	* Add ScriptAlias
+	* Add Suexec Username support
