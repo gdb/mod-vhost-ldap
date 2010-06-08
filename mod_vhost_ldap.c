@@ -626,7 +626,7 @@ fallback:
     }
 
     ap_log_rerror(APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0, r,
-		  "[mod_vhost_ldap.c]: ap_server_root_relative(%s) is: %s", r->filename, ap_server_root_relative(r->pool, r->filename));
+		  "[mod_vhost_ldap.c]: ap_server_root_relative(%s) is: %s", apr_pstrcat(r->pool, reqc->docroot, r->uri), ap_server_root_relative(r->pool, r->filename));
 
     ap_log_rerror(APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0, r,
 		  "[mod_vhost_ldap.c]: ap_document_root is: %s", ap_document_root(r));
