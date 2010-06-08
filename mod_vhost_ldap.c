@@ -468,7 +468,9 @@ static int mod_vhost_ldap_translate_name(request_rec *r)
     char *cgi;
     const char *hostname = NULL;
     int is_fallback = 0;
-    int sleep = 0;
+    int sleep0 = 0;
+    int sleep1 = 1;
+    int sleep;
 
     reqc =
 	(mod_vhost_ldap_request_t *)apr_pcalloc(r->pool, sizeof(mod_vhost_ldap_request_t));
@@ -512,12 +514,14 @@ fallback:
     if (AP_LDAP_IS_SERVER_DOWN(result) ||
 	(result == LDAP_TIMEOUT) ||
 	(result == LDAP_CONNECT_ERROR)) {
+        sleep = sleep0 + sleep1;
         ap_log_rerror(APLOG_MARK, APLOG_WARNING|APLOG_NOERRNO, 0, r,
 		      "[mod_vhost_ldap.c]: lookup failure, retry number #[%d], sleeping for [%d] seconds", failures, sleep);
         if (failures++ < 5) {
 	    /* Back-off exponentially */
 	    apr_sleep(apr_time_from_sec(sleep));
-	    sleep = sleep+failures;
+	    sleep0 = sleep1;
+	    sleep1 = sleep;
             goto start_over;
         } else {
 	    return HTTP_GATEWAY_TIME_OUT;
