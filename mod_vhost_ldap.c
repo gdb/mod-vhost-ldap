@@ -91,7 +91,6 @@ typedef struct mod_vhost_ldap_request_t {
     char *cgiroot;			/* ScriptAlias */
     char *uid;				/* Suexec Uid */
     char *gid;				/* Suexec Gid */
-    char *saved_docroot;                /* Saved DocumentRoot */
 } mod_vhost_ldap_request_t;
 
 char *attributes[] =
@@ -637,8 +636,6 @@ fallback:
     if (reqc->admin) {
 	top->server->server_admin = apr_pstrdup (top->pool, reqc->admin);
     }
-
-    reqc->saved_docroot = apr_pstrdup(top->pool, ap_document_root(r));
 
     result = set_document_root(r, reqc->docroot);
     if (result != OK) {
