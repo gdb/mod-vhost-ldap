@@ -1,3 +1,7 @@
+2010-06-09 Ondřej Surý <ondrej@sury.org>
+	* VERSION: 2.0.1
+	* mod_vhost_ldap.c: Remove cleanup routine, it was causing segfaults.
+
 2010-06-08 Ondřej Surý <ondrej@sury.org>
 	* VERSION: 2.0.0 release
 	* mod_vhost_ldap.c: Sleep for (fibonacci numbers) seconds after LDAP failure
