@@ -653,16 +653,6 @@ fallback:
     return DECLINED;
 }
 
-static int mod_vhost_ldap_cleanup(request_rec * r)
-{
-    mod_vhost_ldap_request_t *reqc =
-      (mod_vhost_ldap_request_t *)ap_get_module_config(r->request_config,
-						       &vhost_ldap_module);
-
-    /* Set ap_document_root back to saved value */
-    return set_document_root(r, reqc->saved_docroot);
-}
-
 #ifdef HAVE_UNIX_SUEXEC
 static ap_unix_identity_t *mod_vhost_ldap_get_suexec_id_doer(const request_rec * r)
 {
@@ -716,7 +706,6 @@ mod_vhost_ldap_register_hooks (apr_pool_t * p)
 
     ap_hook_post_config(mod_vhost_ldap_post_config, NULL, NULL, APR_HOOK_MIDDLE);
     ap_hook_translate_name(mod_vhost_ldap_translate_name, NULL, aszRewrite, APR_HOOK_FIRST);
-    ap_hook_fixups(mod_vhost_ldap_cleanup, aszRewrite, NULL, APR_HOOK_MIDDLE);
 #ifdef HAVE_UNIX_SUEXEC
     ap_hook_get_suexec_identity(mod_vhost_ldap_get_suexec_id_doer, NULL, NULL, APR_HOOK_MIDDLE);
 #endif
