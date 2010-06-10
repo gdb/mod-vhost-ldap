@@ -472,6 +472,7 @@ static int mod_vhost_ldap_translate_name(request_rec *r)
     int sleep0 = 0;
     int sleep1 = 1;
     int sleep;
+    struct berval hostnamebv, shostnamebv;
 
     reqc =
 	(mod_vhost_ldap_request_t *)apr_pcalloc(r->pool, sizeof(mod_vhost_ldap_request_t));
@@ -498,13 +499,19 @@ start_over:
     }
 
     hostname = r->hostname;
+    if (hostname == NULL || hostname[0] == '\0')
+        goto null;
 
 fallback:
 
     ap_log_rerror(APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0, r,
 		  "[mod_vhost_ldap.c]: translating hostname [%s], uri [%s]", hostname, r->uri);
 
-    apr_snprintf(filtbuf, FILTER_LENGTH, "(&(%s)(|(apacheServerName=%s)(apacheServerAlias=%s)))", conf->filter, hostname, hostname);
+    ber_str2bv(hostname, 0, 0, &hostnamebv);
+    if (ldap_bv2escaped_filter_value(&hostnamebv, &shostnamebv) != 0)
+	goto null;
+    apr_snprintf(filtbuf, FILTER_LENGTH, "(&(%s)(|(apacheServerName=%s)(apacheServerAlias=%s)))", conf->filter, shostnamebv.bv_val, shostnamebv.bv_val);
+    ber_memfree(shostnamebv.bv_val);
 
     result = util_ldap_cache_getuserdn(r, ldc, conf->url, conf->basedn, conf->scope,
 				       attributes, filtbuf, &dn, &vals);
@@ -530,6 +537,7 @@ fallback:
     }
 
     if (result == LDAP_NO_SUCH_OBJECT) {
+null:
 	if (conf->fallback && (is_fallback++ <= 0)) {
 	    ap_log_rerror(APLOG_MARK, APLOG_NOTICE|APLOG_NOERRNO, 0, r,
 			  "[mod_vhost_ldap.c] translate: "
