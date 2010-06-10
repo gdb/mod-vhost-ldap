@@ -537,6 +537,18 @@ fallback:
     }
 
     if (result == LDAP_NO_SUCH_OBJECT) {
+	if (strcmp(hostname, "*") != 0) {
+	    if (strncmp(hostname, "*.", 2) == 0)
+		hostname += 2;
+	    hostname += strcspn(hostname, ".");
+	    hostname = apr_pstrcat(r->pool, "*", hostname, NULL);
+	    ap_log_rerror(APLOG_MARK, APLOG_NOTICE|APLOG_NOERRNO, 0, r,
+		          "[mod_vhost_ldap.c] translate: "
+			  "virtual host not found, trying wildcard %s",
+			  hostname);
+	    goto fallback;
+	}
+
 null:
 	if (conf->fallback && (is_fallback++ <= 0)) {
 	    ap_log_rerror(APLOG_MARK, APLOG_NOTICE|APLOG_NOERRNO, 0, r,
