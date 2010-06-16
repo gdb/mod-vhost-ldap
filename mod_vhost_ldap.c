@@ -79,7 +79,8 @@ typedef struct mod_vhost_ldap_config_t {
     int secure;				/* True if SSL connections are requested */
 
     char *fallback;                     /* Fallback virtual host */
-
+    apr_array_header_t *attributes;     /* Attributes to pull from LDAP */
+    apr_hash_t *overrides;              /* Directives that are overriden by LDAP */
 } mod_vhost_ldap_config_t;
 
 typedef struct mod_vhost_ldap_request_t {
@@ -92,7 +93,7 @@ typedef struct mod_vhost_ldap_request_t {
     char *gid;				/* Suexec Gid */
 } mod_vhost_ldap_request_t;
 
-char *attributes[] =
+char *common_attributes[] =
   { "apacheServerName", "apacheDocumentRoot", "apacheScriptAlias", "apacheSuexecUid", "apacheSuexecGid", "apacheServerAdmin", 0 };
 
 static int total_modules;
@@ -155,6 +156,16 @@ mod_vhost_ldap_create_server_config (apr_pool_t *p, server_rec *s)
     conf->deref = always;
     conf->fallback = NULL;
 
+    conf->attributes = apr_array_make(p, 7, sizeof(char *));
+    char **attr;
+    for (attr = common_attributes; *attr != NULL; attr++) {
+      char **next = (char **) apr_array_push(conf->attributes);
+      *next = *attr;
+    }
+    char **terminator = (char **) apr_array_push(conf->attributes);
+    *terminator = NULL;
+    conf->overrides = apr_hash_make(p);
+
     return conf;
 }
 
@@ -203,6 +214,9 @@ mod_vhost_ldap_merge_server_config(apr_pool_t *p, void *parentv, void *childv)
     conf->bindpw = (child->bindpw ? child->bindpw : parent->bindpw);
 
     conf->fallback = (child->fallback ? child->fallback : parent->fallback);
+
+    conf->attributes = (child->attributes ? child->attributes : parent->attributes);
+    conf->overrides = (child->overrides ? child->overrides : parent->overrides);
 
     return conf;
 }
@@ -395,6 +409,114 @@ static const char *mod_vhost_ldap_set_fallback(cmd_parms *cmd, void *dummy, cons
     return NULL;
 }
 
+enum parse_state {
+    PS_LITERAL,
+    PS_PERCENT,
+    PS_VARIABLE
+};
+
+enum token_type {
+    TT_LITERAL,
+    TT_VARIABLE
+};
+
+struct parse_result {
+    enum token_type type;
+    char *data;
+};
+
+static const char *mod_vhost_ldap_set_attributes(cmd_parms *cmd, void *dummy, const char *directive,
+						 const char *template)
+{
+    char *next;
+    const char *curr;
+    char **attr;
+    struct parse_result *successor;
+    enum parse_state state;
+    apr_array_header_t *parsed, *accum;
+
+    mod_vhost_ldap_config_t *conf = 
+	(mod_vhost_ldap_config_t *)ap_get_module_config (cmd->server->module_config,
+							 &vhost_ldap_module);
+
+    parsed = apr_array_make(cmd->pool, 0, sizeof(struct parse_result));
+    accum = apr_array_make(cmd->pool, 0, sizeof(char));
+    
+    /* Pop the NULL off the end */
+    apr_array_pop(conf->attributes);
+
+    state = PS_LITERAL;
+    for (curr = template; *curr; curr++) {
+        switch(state) {
+	case PS_LITERAL:
+  	    if(*curr == '%') {
+	        state = PS_PERCENT;
+	    } else {
+	        next = (char *) apr_array_push(accum);
+		*next = *curr;
+	    }
+            break;
+        case PS_PERCENT:
+            if (*curr == '(') {
+                state = PS_VARIABLE;
+                if (accum->nelts) {
+                    successor = (struct parse_result *) apr_array_push(parsed);
+                    successor->type = TT_LITERAL;
+                    successor->data = apr_pstrndup(cmd->pool, (char *) accum->elts, accum->nelts);
+                    ap_str_tolower(successor->data);
+                }
+                accum = apr_array_make(cmd->pool, 0, sizeof(char));
+            } else {
+                /* This has the right semantics for unescaped '%'s: We
+                   tolerate them as long as they are not followed by
+                   an '('. */
+                state = PS_LITERAL;
+                next = (char *) apr_array_push(accum);
+                *next = *curr;
+            }
+            break;
+        case PS_VARIABLE:
+            if(*curr == ')') {
+                state = PS_LITERAL;
+                if (accum->nelts) {
+                    successor = (struct parse_result *) apr_array_push(parsed);
+                    successor->type = TT_VARIABLE;
+                    successor->data = apr_pstrndup(cmd->pool, (char *) accum->elts, accum->nelts);
+                    ap_str_tolower(successor->data);
+
+                    /* TODO: uniqify array of LDAP attributes */
+                    attr = (char **) apr_array_push(conf->attributes);
+                    *attr = successor->data;
+                }
+                accum = apr_array_make(cmd->pool, 0, sizeof(char));
+            } else {
+	        next = (char *) apr_array_push(accum);
+		*next = *curr;
+            }
+            break;
+        }
+    }
+
+    if (accum->nelts) {
+        successor = (struct parse_result *) apr_array_push(parsed);
+        successor->type = state == PS_LITERAL ? TT_LITERAL : TT_VARIABLE;
+        successor->data = apr_pstrndup(cmd->pool, (char *) accum->elts, accum->nelts);
+        ap_str_tolower(successor->data);
+    }
+
+    /* NULL terminate the attribute list again */
+    attr = (char **) apr_array_push(conf->attributes);
+    *attr = NULL;
+
+    if (state != PS_LITERAL)
+        ap_log_error(APLOG_MARK, APLOG_WARNING|APLOG_NOERRNO, 0, cmd->server,
+                     "[mod_vhost_ldap.c] malformed template \"%s\"", template);
+
+    apr_hash_set(conf->overrides, directive, APR_HASH_KEY_STRING, parsed);
+    return NULL;
+}
+
+
 command_rec mod_vhost_ldap_cmds[] = {
     AP_INIT_TAKE1("VhostLDAPURL", mod_vhost_ldap_parse_url, NULL, RSRC_CONF,
                   "URL to define LDAP connection. This should be an RFC 2255 compliant\n"
@@ -424,7 +546,13 @@ command_rec mod_vhost_ldap_cmds[] = {
 		  "Set default virtual host which will be used when requested hostname"
 		  "is not found in LDAP database. This option can be used to display"
 		  "\"virtual host not found\" type of page."),
-
+    /* TODO: finish this comment */
+    AP_INIT_TAKE2("VhostLDAPConfig", mod_vhost_ldap_set_attributes, NULL, RSRC_CONF,
+                  "Determine the set of configuration variables used to override core Apache\n"
+                  "directive using a template populated from LDAP.\n"
+                  "Must provide the directive name and the template; the latter should be\n"
+                  "of the form \"literal%(attribute)moreliteral\".  \"%%\" is parsed as a\n"
+                  "literal percent."),
     {NULL}
 };
 
@@ -488,7 +616,7 @@ fallback:
     ber_memfree(shostnamebv.bv_val);
 
     result = util_ldap_cache_getuserdn(r, ldc, conf->url, conf->basedn, conf->scope,
-				       attributes, filtbuf, &dn, &vals);
+				       (char **) conf->attributes->elts, filtbuf, &dn, &vals);
 
     util_ldap_connection_close(ldc);
 
@@ -543,41 +671,109 @@ fallback:
     reqc->dn = apr_pstrdup(r->pool, dn);
 
     /* Optimize */
+    apr_hash_t *params = NULL;
+    // TODO: check for errors
+    params = apr_hash_make(r->pool);
+
     if (vals) {
 	int i = 0;
-	while (attributes[i]) {
+        char **attributes = (char **) conf->attributes->elts;
+        while(attributes[i]) {
+            char *attribute = apr_pstrdup(r->pool, ((char **) conf->attributes->elts)[i]);
+            ap_str_tolower(attribute);
+            char *val = apr_pstrdup(r->pool, vals[i]);
 
-	    if (strcasecmp (attributes[i], "apacheServerName") == 0) {
-		reqc->name = apr_pstrdup (r->pool, vals[i]);
+	    if (strcasecmp (attribute, "apacheServerName") == 0) {
+		reqc->name = apr_pstrdup (r->pool, val);
 	    }
-	    else if (strcasecmp (attributes[i], "apacheServerAdmin") == 0) {
-		reqc->admin = apr_pstrdup (r->pool, vals[i]);
+	    else if (strcasecmp (attribute, "apacheServerAdmin") == 0) {
+		reqc->admin = apr_pstrdup (r->pool, val);
 	    }
-	    else if (strcasecmp (attributes[i], "apacheDocumentRoot") == 0) {
-		reqc->docroot = apr_pstrdup (r->pool, vals[i]);
+	    else if (strcasecmp (attribute, "apacheDocumentRoot") == 0) {
+		reqc->docroot = apr_pstrdup (r->pool, val);
 	    }
-	    else if (strcasecmp (attributes[i], "apacheScriptAlias") == 0) {
-		reqc->cgiroot = apr_pstrdup (r->pool, vals[i]);
+	    else if (strcasecmp (attribute, "apacheScriptAlias") == 0) {
+		reqc->cgiroot = apr_pstrdup (r->pool, val);
 	    }
-	    else if (strcasecmp (attributes[i], "apacheSuexecUid") == 0) {
-		reqc->uid = apr_pstrdup(r->pool, vals[i]);
+	    else if (strcasecmp (attribute, "apacheSuexecUid") == 0) {
+		reqc->uid = apr_pstrdup(r->pool, val);
 	    }
-	    else if (strcasecmp (attributes[i], "apacheSuexecGid") == 0) {
-		reqc->gid = apr_pstrdup(r->pool, vals[i]);
+	    else if (strcasecmp (attribute, "apacheSuexecGid") == 0) {
+		reqc->gid = apr_pstrdup(r->pool, val);
 	    }
+
+            apr_hash_set(params, attribute, APR_HASH_KEY_STRING, val);
 	    i++;
 	}
     }
 
+    apr_hash_index_t *idx;
+    apr_array_header_t *retrieved = apr_array_make(r->pool, 0, sizeof(char *));
+    for(idx = apr_hash_first(r->pool, params); idx; idx = apr_hash_next(idx)) {
+        char **attr = (char **) apr_array_push(retrieved);
+        char **colon = (char **) apr_array_push(retrieved);
+        char **val = (char **) apr_array_push(retrieved);
+        char **term = (char **) apr_array_push(retrieved);
+
+        *colon = ": ";
+        *term = ", ";
+        apr_hash_this(idx, (const void **) attr, NULL, (void **) val);
+        /* TODO: don't have a trailing comma. */
+    }
+
     ap_log_rerror(APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0, r,
-		  "[mod_vhost_ldap.c]: loaded from ldap: "
-		  "apacheServerName: %s, "
-		  "apacheServerAdmin: %s, "
-		  "apacheDocumentRoot: %s, "
-		  "apacheScriptAlias: %s, "
-		  "apacheSuexecUid: %s, "
-		  "apacheSuexecGid: %s",
-		  reqc->name, reqc->admin, reqc->docroot, reqc->cgiroot, reqc->uid, reqc->gid);
+		  "[mod_vhost_ldap.c]: loaded from ldap: %s",
+                  apr_array_pstrcat(r->pool, retrieved, '\0'));
+
+    for(idx = apr_hash_first(r->pool, conf->overrides); idx; idx = apr_hash_next(idx)) {
+        apr_array_header_t *interpolated = apr_array_make(r->pool, 0, sizeof(char *));
+        char *dir;
+        apr_array_header_t *parse;
+        apr_hash_this(idx, (const void **) &dir, NULL, (void **) &parse);
+        struct parse_result entry;
+        int i;
+        for(i = 0; i < parse->nelts; i++) {
+            entry = ((struct parse_result *) parse->elts)[i];
+            char **next = (char **) apr_array_push(interpolated);
+            switch(entry.type) {
+            case(TT_LITERAL): *next = entry.data; break;
+            case(TT_VARIABLE): *next = (char *) apr_hash_get(params,
+                                                             (const void *) entry.data,
+                                                             APR_HASH_KEY_STRING);
+            }
+        }
+        char *val = apr_array_pstrcat(r->pool, interpolated, '\0');
+        /* TODO: This spew is probably excessive */
+        ap_log_rerror(APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0, r,
+                      "[mod_vhost_ldap.c]: setting %s to %s",
+                      dir, val);
+
+        ap_directive_t dir_s;
+        dir_s.directive = dir;
+        dir_s.args = val;
+        dir_s.next = NULL;
+        dir_s.first_child = NULL;
+        dir_s.parent = NULL;
+        dir_s.data = NULL;
+        dir_s.filename = NULL;
+        dir_s.line_num = 0;
+        cmd_parms parms;
+        parms.server = r->server;
+        parms.pool   = r->pool;
+        ap_walk_config(&dir_s,
+                       &parms,
+                       r->request_config);
+    
+        if(!strcasecmp(dir, "ErrorLog")) {
+            r->server->error_fname = val;
+            if ( ap_run_open_logs(r->pool, r->pool, r->pool, r->server) != OK) {
+                ap_log_error(APLOG_MARK, APLOG_STARTUP |APLOG_ERR,
+                             0, NULL, "Unable to open reopen log");
+            }
+        } else if(!strcasecmp(dir, "ServerAdmin")) {
+            r->server->server_admin = val;
+        }
+    }
 
     if ((reqc->name == NULL)||(reqc->docroot == NULL)) {
         ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, r, 
