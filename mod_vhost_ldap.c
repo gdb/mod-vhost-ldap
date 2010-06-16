@@ -31,9 +31,13 @@
 #include "http_request.h"
 #include "apr_version.h"
 #include "apr_ldap.h"
-#include "apr_strings.h"
 #include "apr_reslist.h"
+#include "apr_strings.h"
+#include "apr_thread_mutex.h"
+#include "apr_thread_rwlock.h"
+#include "apr_tables.h"
 #include "util_ldap.h"
+#include "util_script.h"
 
 #if !defined(APU_HAS_LDAP) && !defined(APR_HAS_LDAP)
 #error mod_vhost_ldap requires APR-util to have LDAP support built in
@@ -80,6 +84,8 @@ typedef struct mod_vhost_ldap_config_t {
     int secure;				/* True if SSL connections are requested */
 
     char *fallback;                     /* Fallback virtual host */
+
+    apr_thread_mutex_t *mutex;          /* Create per worker mutex to synchronize threads */
 
 } mod_vhost_ldap_config_t;
 
@@ -178,6 +184,8 @@ mod_vhost_ldap_create_server_config (apr_pool_t *p, server_rec *s)
     conf->bindpw = NULL;
     conf->deref = always;
     conf->fallback = NULL;
+
+    apr_thread_mutex_create(&conf->mutex, APR_THREAD_MUTEX_DEFAULT, p);
 
     return conf;
 }
@@ -457,7 +465,6 @@ static int mod_vhost_ldap_translate_name(request_rec *r)
 {
     request_rec *top = (r->main)?r->main:r;
     mod_vhost_ldap_request_t *reqc;
-    apr_table_t *e;
     int failures = 0;
     const char **vals = NULL;
     char filtbuf[FILTER_LENGTH];
@@ -505,7 +512,8 @@ start_over:
 fallback:
 
     ap_log_rerror(APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0, r,
-		  "[mod_vhost_ldap.c]: translating hostname [%s], uri [%s]", hostname, r->uri);
+		  "[mod_vhost_ldap.c]: translating hostname [%s], uri [%s]",
+		  hostname, r->uri);
 
     ber_str2bv(hostname, 0, 0, &hostnamebv);
     if (ldap_bv2escaped_filter_value(&hostnamebv, &shostnamebv) != 0)
@@ -524,7 +532,8 @@ fallback:
 	(result == LDAP_CONNECT_ERROR)) {
         sleep = sleep0 + sleep1;
         ap_log_rerror(APLOG_MARK, APLOG_WARNING|APLOG_NOERRNO, 0, r,
-		      "[mod_vhost_ldap.c]: lookup failure, retry number #[%d], sleeping for [%d] seconds", failures, sleep);
+		      "[mod_vhost_ldap.c]: lookup failure, retry number #[%d], sleeping for [%d] seconds",
+		      failures, sleep);
         if (failures++ < MAX_FAILURES) {
 	    /* Back-off exponentially */
 	    apr_sleep(apr_time_from_sec(sleep));
@@ -619,7 +628,8 @@ null:
     if ((reqc->name == NULL)||(reqc->docroot == NULL)) {
         ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, r, 
                       "[mod_vhost_ldap.c] translate: "
-                      "translate failed; ServerName or DocumentRoot not defined");
+                      "translate failed; ServerName or DocumentRoot not defined",
+		      );
 	return HTTP_INTERNAL_SERVER_ERROR;
     }
 
@@ -636,7 +646,8 @@ null:
         cgi = apr_pstrcat(r->pool, reqc->cgiroot, cgi + strlen("cgi-bin"), NULL);
         if ((cgi = ap_server_root_relative(r->pool, cgi))) {
 	  ap_log_rerror(APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0, r,
-			"[mod_vhost_ldap.c]: ap_document_root is: %s", ap_document_root(r));
+			"[mod_vhost_ldap.c]: ap_document_root is: %s",
+			ap_document_root(r));
 	  r->filename = cgi;
 	  r->handler = "cgi-script";
 	  apr_table_setn(r->notes, "alias-forced-type", r->handler);
@@ -651,6 +662,13 @@ null:
 	return DECLINED;
     }
 
+#if APR_HAS_THREADS
+    ap_log_rerror(APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0, r,
+		  "[mod_vhost_ldap.c]: locking ap_document_root mutex for [%s]",
+		  r->hostname);
+    apr_thread_mutex_lock(conf->mutex);
+#endif
+
     top->server->server_hostname = apr_pstrdup (top->pool, reqc->name);
 
     if (reqc->admin) {
@@ -661,10 +679,6 @@ null:
     if (result != OK) {
         return HTTP_INTERNAL_SERVER_ERROR;
     }
-
-    // set environment variables
-    e = top->subprocess_env;
-    apr_table_addn(e, "DOCUMENT_ROOT", reqc->docroot);
 
     /* Hack to allow post-processing by other modules (mod_rewrite, mod_alias) */
     return DECLINED;
@@ -712,6 +726,20 @@ static ap_unix_identity_t *mod_vhost_ldap_get_suexec_id_doer(const request_rec *
 }
 #endif
 
+static int mod_vhost_ldap_fixups(request_rec *r)
+{
+#if APR_HAS_THREADS
+    mod_vhost_ldap_config_t *conf =
+	(mod_vhost_ldap_config_t *)ap_get_module_config(r->server->module_config, &vhost_ldap_module);
+    ap_log_rerror(APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0, r,
+		  "[mod_vhost_ldap.c]: unlocking ap_document_root mutex for [%s]",
+		  r->hostname);
+
+    apr_thread_mutex_unlock(conf->mutex);
+#endif
+    return OK;
+}
+
 static void
 mod_vhost_ldap_register_hooks (apr_pool_t * p)
 {
@@ -729,6 +757,8 @@ mod_vhost_ldap_register_hooks (apr_pool_t * p)
 #if (APR_MAJOR_VERSION >= 1)
     ap_hook_optional_fn_retrieve(ImportULDAPOptFn,NULL,NULL,APR_HOOK_MIDDLE);
 #endif
+
+    ap_hook_fixups(mod_vhost_ldap_fixups, NULL, NULL, APR_HOOK_LAST);
 }
 
 module AP_MODULE_DECLARE_DATA vhost_ldap_module = {
