@@ -1,3 +1,9 @@
+2010-06-16 Ondřej Surý <ondrej@sury.org>
+	* VERSION: 2.0.3
+	* mod_vhost_ldap.c: Workaround concurrency issues with ap_document_root
+	                    by adding mutex before it is set and release before
+	                    handler is run.
+
 2010-06-09 Ondřej Surý <ondrej@sury.org>
 	* VERSION: 2.0.1
 	* mod_vhost_ldap.c: Remove cleanup routine, it was causing segfaults.
