@@ -628,8 +628,7 @@ null:
     if ((reqc->name == NULL)||(reqc->docroot == NULL)) {
         ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, r, 
                       "[mod_vhost_ldap.c] translate: "
-                      "translate failed; ServerName or DocumentRoot not defined",
-		      );
+                      "translate failed; ServerName or DocumentRoot not defined");
 	return HTTP_INTERNAL_SERVER_ERROR;
     }
 
