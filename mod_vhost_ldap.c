@@ -100,6 +100,19 @@ typedef struct mod_vhost_ldap_request_t {
     char *gid;				/* Suexec Gid */
 } mod_vhost_ldap_request_t;
 
+enum token_type {
+    TT_LITERAL,
+    TT_VARIABLE
+};
+
+struct parse_result {
+    enum token_type type;
+    union {
+        char *literal;    /* Section of literal text, used if type == TT_LITERAL */
+        int offset;       /* Offset into the attributes array for a variable, used if type == TT_VARIBALE */
+    } data;
+};
+
 char *common_attributes[] =
   { "apacheServerName", "apacheDocumentRoot", "apacheScriptAlias", "apacheSuexecUid", "apacheSuexecGid", "apacheServerAdmin", 0 };
 
@@ -165,12 +178,9 @@ mod_vhost_ldap_create_server_config (apr_pool_t *p, server_rec *s)
 
     conf->attributes = apr_array_make(p, 7, sizeof(char *));
     char **attr;
-    for (attr = common_attributes; *attr != NULL; attr++) {
-      char **next = (char **) apr_array_push(conf->attributes);
-      *next = *attr;
-    }
-    char **terminator = (char **) apr_array_push(conf->attributes);
-    *terminator = NULL;
+    for (attr = common_attributes; *attr != NULL; attr++)
+      APR_ARRAY_PUSH(conf->attributes, char *) = *attr;
+    APR_ARRAY_PUSH(conf->attributes, char *) = NULL;
     conf->attr_idx = apr_hash_make(p);
     conf->directives = apr_array_make(p, 0, sizeof(char *));
     conf->dir_idx = apr_hash_make(p);
@@ -419,6 +429,91 @@ static const char *mod_vhost_ldap_set_fallback(cmd_parms *cmd, void *dummy, cons
     return NULL;
 }
 
+static int mod_vhost_ldap_push_once(apr_array_header_t *names,
+                                    apr_hash_t *offsets, const char *name)
+{
+    int pos;
+    void *relpos = apr_hash_get(offsets, name, APR_HASH_KEY_STRING);
+    if (relpos == NULL) {
+        APR_ARRAY_PUSH(names, const char *) = name;
+        pos = names->nelts - 1;
+        apr_hash_set(offsets, name, APR_HASH_KEY_STRING, ((void *) names) + pos);
+    } else {
+        pos = relpos - ((void *) names);
+    }
+    return pos;
+}
+
+static void mod_vhost_ldap_array_set(apr_array_header_t *ary, void *value, int pos)
+{
+    while (ary->nelts < pos + 1) {
+        APR_ARRAY_PUSH(ary, void *) = NULL;
+    }
+    APR_ARRAY_IDX(ary, pos, void *) = value;
+}
+
+static const char *mod_vhost_ldap_set_attributes(cmd_parms *cmd, void *dummy, const char *directive,
+						 const char *template)
+{
+    const char *p;
+    apr_array_header_t *parsed;
+    char *end;
+    char *variable;
+    int pos;
+
+    mod_vhost_ldap_config_t *conf = 
+	(mod_vhost_ldap_config_t *)ap_get_module_config (cmd->server->module_config,
+							 &vhost_ldap_module);
+
+    parsed = apr_array_make(cmd->pool, 0, sizeof(struct parse_result));
+    
+    /* Pop the NULL off the end */
+    apr_array_pop(conf->attributes);
+
+    p = template;
+    while (*p != '\0') {
+        switch (*p) {
+        case '%':
+            p++;
+            switch (*p) {
+            case '(':
+                p++;
+                end = strchrnul(p, ')');
+                if (*end != ')')
+                    return "Unterminated substitution variable in VhostLDAPConfig template";
+                variable = apr_pstrndup(cmd->pool, p, end - p);
+                ap_str_tolower(variable);
+                pos = mod_vhost_ldap_push_once(conf->attributes, conf->attr_idx, variable);
+                APR_ARRAY_PUSH(parsed, struct parse_result) =
+                    (struct parse_result) { .type = TT_VARIABLE, .data.offset = pos };
+                p = end + 1;
+                break;
+            case '%':
+                APR_ARRAY_PUSH(parsed, struct parse_result) =
+                    (struct parse_result) { .type = TT_LITERAL, .data.literal = "%" };
+                p++;
+                break;
+            default:
+                return "Unescaped use of literal '%' in VhostLDAPConfig template";
+            }
+            break;
+        default:
+            end = strchrnul(p, '%');
+            variable = apr_pstrndup(cmd->pool, p, end - p);
+            APR_ARRAY_PUSH(parsed, struct parse_result) =
+                (struct parse_result) { .type = TT_LITERAL, .data.literal = variable };
+            p = end;
+        }
+    }
+
+    /* NULL terminate the attribute list again */
+    APR_ARRAY_PUSH(conf->attributes, char *) = NULL;
+    pos = mod_vhost_ldap_push_once(conf->directives, conf->dir_idx, directive);
+    mod_vhost_ldap_array_set(conf->overrides, parsed, pos);
+    return NULL;
+}
+
+
 command_rec mod_vhost_ldap_cmds[] = {
     AP_INIT_TAKE1("VhostLDAPURL", mod_vhost_ldap_parse_url, NULL, RSRC_CONF,
                   "URL to define LDAP connection. This should be an RFC 2255 compliant\n"
@@ -448,7 +543,13 @@ command_rec mod_vhost_ldap_cmds[] = {
 		  "Set default virtual host which will be used when requested hostname"
 		  "is not found in LDAP database. This option can be used to display"
 		  "\"virtual host not found\" type of page."),
-
+    /* TODO: finish this comment */
+    AP_INIT_TAKE2("VhostLDAPConfig", mod_vhost_ldap_set_attributes, NULL, RSRC_CONF,
+                  "Determine the set of configuration variables used to override core Apache\n"
+                  "directive using a template populated from LDAP.\n"
+                  "Must provide the directive name and the template; the latter should be\n"
+                  "of the form \"literal%(attribute)moreliteral\".  \"%%\" is parsed as a\n"
+                  "literal percent."),
     {NULL}
 };
 
