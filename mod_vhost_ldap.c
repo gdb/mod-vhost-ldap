@@ -83,7 +83,11 @@ typedef struct mod_vhost_ldap_config_t {
     int secure;				/* True if SSL connections are requested */
 
     char *fallback;                     /* Fallback virtual host */
-
+    apr_array_header_t *attributes;     /* NULL-terminated list of LDAP attributes to look up */
+    apr_hash_t *attr_idx;               /* Map from attributes -> indices in attributes array */
+    apr_array_header_t *directives;     /* Apache directives that will be overriden by LDAP  */
+    apr_hash_t *dir_idx;                /* Map from directives -> indices in directives array */
+    apr_array_header_t *overrides;      /* Parsed templates for the new value of directives  */
 } mod_vhost_ldap_config_t;
 
 typedef struct mod_vhost_ldap_request_t {
@@ -96,7 +100,7 @@ typedef struct mod_vhost_ldap_request_t {
     char *gid;				/* Suexec Gid */
 } mod_vhost_ldap_request_t;
 
-char *attributes[] =
+char *common_attributes[] =
   { "apacheServerName", "apacheDocumentRoot", "apacheScriptAlias", "apacheSuexecUid", "apacheSuexecGid", "apacheServerAdmin", 0 };
 
 static int total_modules;
@@ -159,6 +163,19 @@ mod_vhost_ldap_create_server_config (apr_pool_t *p, server_rec *s)
     conf->deref = always;
     conf->fallback = NULL;
 
+    conf->attributes = apr_array_make(p, 7, sizeof(char *));
+    char **attr;
+    for (attr = common_attributes; *attr != NULL; attr++) {
+      char **next = (char **) apr_array_push(conf->attributes);
+      *next = *attr;
+    }
+    char **terminator = (char **) apr_array_push(conf->attributes);
+    *terminator = NULL;
+    conf->attr_idx = apr_hash_make(p);
+    conf->directives = apr_array_make(p, 0, sizeof(char *));
+    conf->dir_idx = apr_hash_make(p);
+    conf->overrides = apr_array_make(p, 0, sizeof(apr_array_header_t *));
+
     return conf;
 }
 
@@ -207,6 +224,9 @@ mod_vhost_ldap_merge_server_config(apr_pool_t *p, void *parentv, void *childv)
     conf->bindpw = (child->bindpw ? child->bindpw : parent->bindpw);
 
     conf->fallback = (child->fallback ? child->fallback : parent->fallback);
+
+    conf->attributes = (child->attributes ? child->attributes : parent->attributes);
+    conf->overrides = (child->overrides ? child->overrides : parent->overrides);
 
     return conf;
 }
@@ -496,7 +516,7 @@ fallback:
     ber_memfree(shostnamebv.bv_val);
 
     result = util_ldap_cache_getuserdn(r, ldc, conf->url, conf->basedn, conf->scope,
-				       attributes, filtbuf, &dn, &vals);
+				       (char **) conf->attributes->elts, filtbuf, &dn, &vals);
 
     util_ldap_connection_close(ldc);
 
