@@ -115,9 +115,6 @@ struct parse_result {
     } data;
 };
 
-char *common_attributes[] =
-  { "apacheServerName", "apacheDocumentRoot", "apacheScriptAlias", "apacheSuexecUid", "apacheSuexecGid", "apacheServerAdmin", 0 };
-
 static int total_modules;
 
 #if (APR_MAJOR_VERSION >= 1)
@@ -179,9 +176,6 @@ mod_vhost_ldap_create_server_config (apr_pool_t *p, server_rec *s)
     conf->fallback = NULL;
 
     conf->attributes = apr_array_make(p, 7, sizeof(char *));
-    char **attr;
-    for (attr = common_attributes; *attr != NULL; attr++)
-      APR_ARRAY_PUSH(conf->attributes, char *) = *attr;
     APR_ARRAY_PUSH(conf->attributes, char *) = NULL;
     conf->attr_idx = apr_hash_make(p);
     conf->directives = apr_array_make(p, 0, sizeof(char *));
@@ -455,6 +449,14 @@ static void mod_vhost_ldap_array_set(apr_array_header_t *ary, void *value, int p
     APR_ARRAY_IDX(ary, pos, void *) = value;
 }
 
+static void *mod_vhost_ldap_array_get(apr_array_header_t *ary, int pos)
+{
+    if (pos < ary->nelts)
+        return APR_ARRAY_IDX(ary, pos, void *);
+    else
+        return NULL;
+}
+
 static const char *mod_vhost_ldap_set_attributes(cmd_parms *cmd, void *dummy, const char *directive,
 						 const char *template)
 {
@@ -516,6 +518,25 @@ static const char *mod_vhost_ldap_set_attributes(cmd_parms *cmd, void *dummy, co
     return NULL;
 }
 
+static char *mod_vhost_ldap_interpolate(apr_pool_t *p, apr_array_header_t *parse, const char **vals)
+{
+    apr_array_header_t *interpolated = apr_array_make(p, 0, sizeof(char *));
+    struct parse_result entry;
+    int i;
+    for (i = 0; i < parse->nelts; i++) {
+        entry = APR_ARRAY_IDX(parse, i, struct parse_result);
+        switch(entry.type) {
+        case(TT_LITERAL): APR_ARRAY_PUSH(interpolated, char *) = entry.data.literal; break;
+        case(TT_VARIABLE):
+	  if (vals[entry.data.offset] != NULL)
+              APR_ARRAY_PUSH(interpolated, const char *) = vals[entry.data.offset];
+          else
+              return NULL;
+        }
+    }
+
+    return apr_array_pstrcat(p, interpolated, '\0');
+}
 
 static const char *mod_vhost_ldap_set_validator(cmd_parms *cmd, void *dummy, const char *directive,
                                                 const char *regex)
@@ -705,42 +726,61 @@ null:
     /* mark the user and DN */
     reqc->dn = apr_pstrdup(r->pool, dn);
 
-    /* Optimize */
-    if (vals) {
-	int i = 0;
-	while (attributes[i]) {
+    int i;
+    for (i = 0; i < conf->directives->nelts; i++) {
+        char *val;
+        char *dir = APR_ARRAY_IDX(conf->directives, i, char *);
+        const char *error;
+        apr_array_header_t *parse;
+        if((parse = mod_vhost_ldap_array_get(conf->overrides, i)) == NULL)
+            continue;
 
-	    if (strcasecmp (attributes[i], "apacheServerName") == 0) {
-		reqc->name = apr_pstrdup (r->pool, vals[i]);
-	    }
-	    else if (strcasecmp (attributes[i], "apacheServerAdmin") == 0) {
-		reqc->admin = apr_pstrdup (r->pool, vals[i]);
-	    }
-	    else if (strcasecmp (attributes[i], "apacheDocumentRoot") == 0) {
-		reqc->docroot = apr_pstrdup (r->pool, vals[i]);
-	    }
-	    else if (strcasecmp (attributes[i], "apacheScriptAlias") == 0) {
-		reqc->cgiroot = apr_pstrdup (r->pool, vals[i]);
-	    }
-	    else if (strcasecmp (attributes[i], "apacheSuexecUid") == 0) {
-		reqc->uid = apr_pstrdup(r->pool, vals[i]);
-	    }
-	    else if (strcasecmp (attributes[i], "apacheSuexecGid") == 0) {
-		reqc->gid = apr_pstrdup(r->pool, vals[i]);
-	    }
-	    i++;
+        if ((val = mod_vhost_ldap_interpolate(r->pool, parse, vals)) == NULL)
+            continue;
+
+        ap_log_rerror(APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0, r,
+                      "[mod_vhost_ldap.c]: setting %s to \"%s\"",
+                      dir, val);
+
+        ap_regex_t *regex;
+        if ((regex = mod_vhost_ldap_array_get(conf->validators, i)) != NULL &&
+            ap_regexec(regex, val, 0, NULL, 0) != 0) {
+            ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, r,
+                          "[mod_vhost_ldap.c]: value for %s was \"%s\", which does not match its regex",
+                          dir, val);
+            return HTTP_INTERNAL_SERVER_ERROR;
+        }
+
+        if ((error = ap_reconfigure_directive(r->pool, r->server, dir, val)) != NULL) {
+	    ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, r,
+                          "[mod_vhost_ldap.c]: error while reconfiguring %s: %s",
+                          dir, error);
+            return HTTP_INTERNAL_SERVER_ERROR;
 	}
-    }
 
-    ap_log_rerror(APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0, r,
-		  "[mod_vhost_ldap.c]: loaded from ldap: "
-		  "apacheServerName: %s, "
-		  "apacheServerAdmin: %s, "
-		  "apacheDocumentRoot: %s, "
-		  "apacheScriptAlias: %s, "
-		  "apacheSuexecUid: %s, "
-		  "apacheSuexecGid: %s",
-		  reqc->name, reqc->admin, reqc->docroot, reqc->cgiroot, reqc->uid, reqc->gid);
+        /* Special cases */
+        if (!strcasecmp(dir, "ErrorLog")) {
+            apr_file_t* error_log;
+            apr_status_t status;
+            char error[512];
+            if ((status = apr_file_open(&error_log, r->server->error_fname,
+                                        APR_APPEND|APR_WRITE|APR_CREATE,
+                                        APR_FPROT_OS_DEFAULT,
+                                        r->pool)) != APR_SUCCESS) {
+                apr_strerror(status, error, sizeof(error));
+                ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, r,
+                              "[mod_vhost_ldap.c] could not open error log \"%s\": %s",
+                              r->server->error_fname, error);
+                return HTTP_INTERNAL_SERVER_ERROR;
+            }
+            r->server->error_log = error_log;
+        } else if (!strcasecmp(dir, "ServerName")) {
+            reqc->name = val;
+        } else if (!strcasecmp(dir, "DocumentRoot")) {
+            reqc->docroot = val;
+        }
+        /* TODO: add customlog*/
+    }
 
     if ((reqc->name == NULL)||(reqc->docroot == NULL)) {
         ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, r, 
@@ -806,12 +846,6 @@ null:
                       "[mod_vhost_ldap.c] translate: "
                       "translate failed; Unable to copy r->server structure");
 	return HTTP_INTERNAL_SERVER_ERROR;
-    }
-
-    r->server->server_hostname = reqc->name;
-
-    if (reqc->admin) {
-	r->server->server_admin = reqc->admin;
     }
 
     if ((r->server->module_config = apr_pmemdup(r->pool, r->server->module_config,
