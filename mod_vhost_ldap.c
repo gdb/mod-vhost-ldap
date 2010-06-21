@@ -33,8 +33,6 @@
 #include "apr_ldap.h"
 #include "apr_reslist.h"
 #include "apr_strings.h"
-#include "apr_thread_mutex.h"
-#include "apr_thread_rwlock.h"
 #include "apr_tables.h"
 #include "util_ldap.h"
 #include "util_script.h"
@@ -84,8 +82,6 @@ typedef struct mod_vhost_ldap_config_t {
     int secure;				/* True if SSL connections are requested */
 
     char *fallback;                     /* Fallback virtual host */
-
-    apr_thread_mutex_t *mutex;          /* Create per worker mutex to synchronize threads */
 
 } mod_vhost_ldap_config_t;
 
@@ -184,8 +180,6 @@ mod_vhost_ldap_create_server_config (apr_pool_t *p, server_rec *s)
     conf->bindpw = NULL;
     conf->deref = always;
     conf->fallback = NULL;
-
-    apr_thread_mutex_create(&conf->mutex, APR_THREAD_MUTEX_DEFAULT, p);
 
     return conf;
 }
@@ -661,13 +655,6 @@ null:
 	return DECLINED;
     }
 
-#if APR_HAS_THREADS
-    ap_log_rerror(APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0, r,
-		  "[mod_vhost_ldap.c]: locking ap_document_root mutex for [%s]",
-		  r->hostname);
-    apr_thread_mutex_lock(conf->mutex);
-#endif
-
     top->server->server_hostname = apr_pstrdup (top->pool, reqc->name);
 
     if (reqc->admin) {
@@ -678,6 +665,7 @@ null:
     if (result != OK) {
         return HTTP_INTERNAL_SERVER_ERROR;
     }
+    apr_table_setn(r->notes, "vhost-document-root", reqc->docroot);
 
     /* Hack to allow post-processing by other modules (mod_rewrite, mod_alias) */
     return DECLINED;
@@ -727,16 +715,13 @@ static ap_unix_identity_t *mod_vhost_ldap_get_suexec_id_doer(const request_rec *
 
 static int mod_vhost_ldap_fixups(request_rec *r)
 {
-#if APR_HAS_THREADS
-    mod_vhost_ldap_config_t *conf =
-	(mod_vhost_ldap_config_t *)ap_get_module_config(r->server->module_config, &vhost_ldap_module);
-    ap_log_rerror(APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0, r,
-		  "[mod_vhost_ldap.c]: unlocking ap_document_root mutex for [%s]",
-		  r->hostname);
+    char *docroot = 
+      apr_table_get(r->notes, "vhost-document-root");
 
-    apr_thread_mutex_unlock(conf->mutex);
-#endif
-    return OK;
+    if (docroot != NULL)
+      return set_document_root(r, );
+    else
+      return DECLINED;
 }
 
 static void
