@@ -716,12 +716,13 @@ static ap_unix_identity_t *mod_vhost_ldap_get_suexec_id_doer(const request_rec *
 static int mod_vhost_ldap_fixups(request_rec *r)
 {
     char *docroot = 
-      apr_table_get(r->notes, "vhost-document-root");
+        apr_table_get(r->notes, "vhost-document-root");
 
-    if (docroot != NULL)
-      return set_document_root(r, );
-    else
-      return DECLINED;
+    /* If we don't have DocumentRoot in notes then do nothing */
+    if (docroot == NULL)
+        return DECLINED;
+
+    return set_document_root(r, docroot);
 }
 
 static void
