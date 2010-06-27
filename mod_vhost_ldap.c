@@ -50,6 +50,10 @@
 #include "unixd.h"              /* Contains the suexec_identity hook used on Unix */
 #endif
 
+static int mod_vhost_ldap_push_once(apr_array_header_t *, apr_hash_t *, const char *);
+static void mod_vhost_ldap_array_set(apr_array_header_t *, void *, int);
+
+
 #define MIN_UID 100
 #define MIN_GID 100
 const char USERDIR[] = "web_scripts";
@@ -181,8 +185,56 @@ mod_vhost_ldap_create_server_config (apr_pool_t *p, server_rec *s)
     conf->directives = apr_array_make(p, 0, sizeof(char *));
     conf->dir_idx = apr_hash_make(p);
     conf->overrides = apr_array_make(p, 0, sizeof(apr_array_header_t *));
+    conf->validators = apr_array_make(p, 0, sizeof(ap_regex_t *));
 
     return conf;
+}
+
+static void
+mod_vhost_ldap_merge_onto(apr_pool_t *p, mod_vhost_ldap_config_t *source,
+                          mod_vhost_ldap_config_t *target)
+{
+    int i, j, newidx, pos;
+    struct parse_result res;
+    apr_array_header_t *newary;
+    apr_array_header_t *subary;
+    ap_regex_t *regex;
+
+    /* Skip the null terminator */
+    apr_array_pop(target->attributes);
+    for (i = 0; i < source->attributes->nelts - 1; i++)
+        mod_vhost_ldap_push_once(target->attributes, target->attr_idx,
+                                 APR_ARRAY_IDX(source->attributes, i, char *));
+    APR_ARRAY_PUSH(target->attributes, char *) = NULL;
+    /* We take advantage of the invariant the the directives array is always
+     at least as long as the overrides or validators arrays. */
+    for (i = 0; i < source->directives->nelts; i++) {
+        pos = mod_vhost_ldap_push_once(target->directives, target->dir_idx,
+                                       APR_ARRAY_IDX(source->directives, i, char *));
+        newary = apr_array_make(p, 0, sizeof(struct parse_result));
+        if ((subary = APR_ARRAY_IDX(source->overrides, i, apr_array_header_t *)) != NULL) {
+            for (j = 0; j < subary->nelts; j++) {
+                res = APR_ARRAY_IDX(subary, j, struct parse_result);
+                switch(res.type) {
+                case(TT_LITERAL):
+                    APR_ARRAY_PUSH(newary, struct parse_result) = res;
+                    break;
+                case(TT_VARIABLE):
+                    /* All attributes should have been pushed above; we just do a lookup here.*/
+                    newidx = mod_vhost_ldap_push_once(target->attributes, target->attr_idx,
+                                                      APR_ARRAY_IDX(source->attributes,
+                                                                    res.data.offset, char *));
+                    APR_ARRAY_PUSH(newary, struct parse_result) =
+                        (struct parse_result) { .type = res.type, .data.offset = newidx };
+                    break;
+                }
+                mod_vhost_ldap_array_set(target->overrides, newary, pos);
+            }
+        }
+
+        if ((regex = APR_ARRAY_IDX(source->validators, i, ap_regex_t *)) != NULL)
+            mod_vhost_ldap_array_set(target->validators, regex, pos);
+    }
 }
 
 static void *
@@ -231,9 +283,16 @@ mod_vhost_ldap_merge_server_config(apr_pool_t *p, void *parentv, void *childv)
 
     conf->fallback = (child->fallback ? child->fallback : parent->fallback);
 
-    conf->attributes = (child->attributes ? child->attributes : parent->attributes);
-    conf->overrides = (child->overrides ? child->overrides : parent->overrides);
-    conf->validators = (child->validators ? child->validators : parent->validators);
+    conf->attributes = apr_array_make(p, 0, sizeof(char *));
+    /* maintain the invariant that the array is NULL-terminated */
+    APR_ARRAY_PUSH(conf->attributes, char *) = NULL;
+    conf->attr_idx = apr_hash_make(p);
+    conf->directives = apr_array_make(p, 0, sizeof(char *));
+    conf->dir_idx = apr_hash_make(p);
+    conf->overrides = apr_array_make(p, 0, sizeof(apr_array_header_t *));
+    conf->validators = apr_array_make(p, 0, sizeof(ap_regex_t *));
+    mod_vhost_ldap_merge_onto(p, parent, conf);
+    mod_vhost_ldap_merge_onto(p, child, conf);
 
     return conf;
 }
