@@ -30,6 +30,7 @@
 #include "http_log.h"
 #include "http_request.h"
 #include "apr_version.h"
+#include "apr_fnmatch.h"
 #include "apr_ldap.h"
 #include "apr_reslist.h"
 #include "apr_strings.h"
@@ -88,6 +89,7 @@ typedef struct mod_vhost_ldap_config_t {
     apr_array_header_t *directives;     /* Apache directives that will be overriden by LDAP  */
     apr_hash_t *dir_idx;                /* Map from directives -> indices in directives array */
     apr_array_header_t *overrides;      /* Parsed templates for the new value of directives  */
+    apr_array_header_t *validators;             /* Regexes to validate interpolated attributes */
 } mod_vhost_ldap_config_t;
 
 typedef struct mod_vhost_ldap_request_t {
@@ -237,6 +239,7 @@ mod_vhost_ldap_merge_server_config(apr_pool_t *p, void *parentv, void *childv)
 
     conf->attributes = (child->attributes ? child->attributes : parent->attributes);
     conf->overrides = (child->overrides ? child->overrides : parent->overrides);
+    conf->validators = (child->validators ? child->validators : parent->validators);
 
     return conf;
 }
@@ -514,6 +517,21 @@ static const char *mod_vhost_ldap_set_attributes(cmd_parms *cmd, void *dummy, co
 }
 
 
+static const char *mod_vhost_ldap_set_validator(cmd_parms *cmd, void *dummy, const char *directive,
+                                                const char *regex)
+{
+    mod_vhost_ldap_config_t *conf =
+	(mod_vhost_ldap_config_t *)ap_get_module_config(cmd->server->module_config,
+							&vhost_ldap_module);
+    ap_regex_t *compiled = apr_palloc(cmd->pool, sizeof(ap_regex_t));
+    int pos;
+    if (ap_regcomp(compiled, regex, 0) != 0)
+        return "Invalid VhostLDAPRegex specified";
+    pos = mod_vhost_ldap_push_once(conf->directives, conf->dir_idx, directive);
+    mod_vhost_ldap_array_set(conf->validators, compiled, pos);
+    return NULL;
+}
+
 command_rec mod_vhost_ldap_cmds[] = {
     AP_INIT_TAKE1("VhostLDAPURL", mod_vhost_ldap_parse_url, NULL, RSRC_CONF,
                   "URL to define LDAP connection. This should be an RFC 2255 compliant\n"
@@ -550,6 +568,10 @@ command_rec mod_vhost_ldap_cmds[] = {
                   "Must provide the directive name and the template; the latter should be\n"
                   "of the form \"literal%(attribute)moreliteral\".  \"%%\" is parsed as a\n"
                   "literal percent."),
+    AP_INIT_TAKE2("VhostLDAPRegex", mod_vhost_ldap_set_validator, NULL, RSRC_CONF,
+                  "Provide a directive and a regex that directive must match when\n"
+                  "interpolated.  Used to prevent limit the damage that injection\n"
+                  "from LDAP can cause."),
     {NULL}
 };
 
