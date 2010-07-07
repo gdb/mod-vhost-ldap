@@ -98,6 +98,8 @@ typedef struct mod_vhost_ldap_request_t {
 char *attributes[] =
   { "apacheServerName", "apacheDocumentRoot", "apacheScriptAlias", "apacheSuexecUid", "apacheSuexecGid", "apacheServerAdmin", 0 };
 
+static int total_modules;
+
 #if (APR_MAJOR_VERSION >= 1)
 static APR_OPTIONAL_FN_TYPE(uldap_connection_close) *util_ldap_connection_close;
 static APR_OPTIONAL_FN_TYPE(uldap_connection_find) *util_ldap_connection_find;
@@ -119,40 +121,15 @@ static void ImportULDAPOptFn(void)
 }
 #endif 
 
-/* Taken from server/core.c */
-static int set_document_root(request_rec *r, const char *arg)
-{
-    void *sconf = r->server->module_config;
-    core_server_config *conf = ap_get_module_config(sconf, &core_module);
-
-    /* Make it absolute, relative to ServerRoot */
-    arg = ap_server_root_relative(r->pool, arg);
-
-    if (arg == NULL) {
-        ap_log_rerror(APLOG_MARK, APLOG_WARNING, 0, r, 
-                      "[mod_vhost_ldap.c] set_document_root: DocumentRoot [%s] must be a directory",
-		      arg);
-
-        return HTTP_INTERNAL_SERVER_ERROR;
-    }
-
-    /* TODO: ap_configtestonly && ap_docrootcheck && */
-    if (apr_filepath_merge((char**)&conf->ap_document_root, NULL, arg,
-                           APR_FILEPATH_TRUENAME, r->pool) != APR_SUCCESS
-        || !ap_is_directory(r->pool, arg)) {
-
-        ap_log_rerror(APLOG_MARK, APLOG_WARNING, 0,
-		      r,
-		      "[mod_vhost_ldap.c] set_document_root: Warning: DocumentRoot [%s] does not exist",
-		      arg);
-        conf->ap_document_root = arg;
-    }
-    return OK;
-}
-
-
 static int mod_vhost_ldap_post_config(apr_pool_t *p, apr_pool_t *plog, apr_pool_t *ptemp, server_rec *s)
 {
+    module **m;
+    
+    /* Stolen from modules/generators/mod_cgid.c */
+    total_modules = 0;
+    for (m = ap_preloaded_modules; *m != NULL; m++)
+      total_modules++;
+
     /* make sure that mod_ldap (util_ldap) is loaded */
     if (ap_find_linked_module("util_ldap.c") == NULL) {
         ap_log_error(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, s,
@@ -457,13 +434,14 @@ command_rec mod_vhost_ldap_cmds[] = {
 #define FILTER_LENGTH MAX_STRING_LEN
 static int mod_vhost_ldap_translate_name(request_rec *r)
 {
-    request_rec *top = (r->main)?r->main:r;
     mod_vhost_ldap_request_t *reqc;
     int failures = 0;
     const char **vals = NULL;
     char filtbuf[FILTER_LENGTH];
     mod_vhost_ldap_config_t *conf =
 	(mod_vhost_ldap_config_t *)ap_get_module_config(r->server->module_config, &vhost_ldap_module);
+    core_server_config *core =
+        (core_server_config *)ap_get_module_config(r->server->module_config, &core_module);
     util_ldap_connection_t *ldc = NULL;
     int result = 0;
     const char *dn = NULL;
@@ -627,7 +605,7 @@ null:
     }
 
     cgi = NULL;
-  
+
     if (reqc->cgiroot) {
 	cgi = strstr(r->uri, "cgi-bin/");
 	if (cgi && (cgi != r->uri + strspn(r->uri, "/"))) {
@@ -655,17 +633,58 @@ null:
 	return DECLINED;
     }
 
-    top->server->server_hostname = apr_pstrdup (top->pool, reqc->name);
+    if ((r->server = apr_pmemdup(r->pool, r->server, sizeof(*r->server))) == NULL) {
+        ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, r, 
+                      "[mod_vhost_ldap.c] translate: "
+                      "translate failed; Unable to copy r->server structure");
+	return HTTP_INTERNAL_SERVER_ERROR;
+    }
+
+    r->server->server_hostname = reqc->name;
 
     if (reqc->admin) {
-	top->server->server_admin = apr_pstrdup (top->pool, reqc->admin);
+	r->server->server_admin = reqc->admin;
     }
 
-    result = set_document_root(r, reqc->docroot);
-    if (result != OK) {
+    if ((r->server->module_config = apr_pmemdup(r->pool, r->server->module_config,
+						sizeof(void *) *
+						(total_modules + DYNAMIC_MODULE_LIMIT))) == NULL) {
+        ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, r, 
+                      "[mod_vhost_ldap.c] translate: "
+                      "translate failed; Unable to copy r->server->module_config structure");
         return HTTP_INTERNAL_SERVER_ERROR;
     }
-    apr_table_setn(r->notes, "vhost-document-root", reqc->docroot);
+
+    if ((core = apr_pmemdup(r->pool, core, sizeof(*core))) == NULL) {
+        ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, r, 
+                      "[mod_vhost_ldap.c] translate: "
+                      "translate failed; Unable to copy r->core structure");
+        return HTTP_INTERNAL_SERVER_ERROR;
+    }
+    ap_set_module_config(r->server->module_config, &core_module, core);
+
+    /* Stolen from server/core.c */
+
+    /* Make it absolute, relative to ServerRoot */
+    reqc->docroot = ap_server_root_relative(r->pool, reqc->docroot);
+
+    if (reqc->docroot == NULL) {
+        ap_log_rerror(APLOG_MARK, APLOG_WARNING, 0, r, 
+                      "[mod_vhost_ldap.c] set_document_root: DocumentRoot must be a directory");
+
+        return HTTP_INTERNAL_SERVER_ERROR;
+    }
+
+    /* TODO: ap_configtestonly && ap_docrootcheck && */
+    if (apr_filepath_merge((char**)&core->ap_document_root, NULL, reqc->docroot,
+                           APR_FILEPATH_TRUENAME, r->pool) != APR_SUCCESS
+        || !ap_is_directory(r->pool, reqc->docroot)) {
+
+        ap_log_rerror(APLOG_MARK, APLOG_WARNING, 0, r,
+		      "[mod_vhost_ldap.c] set_document_root: Warning: DocumentRoot [%s] does not exist",
+		      reqc->docroot);
+        core->ap_document_root = reqc->docroot;
+    }
 
     /* Hack to allow post-processing by other modules (mod_rewrite, mod_alias) */
     return DECLINED;
@@ -713,18 +732,6 @@ static ap_unix_identity_t *mod_vhost_ldap_get_suexec_id_doer(const request_rec *
 }
 #endif
 
-static int mod_vhost_ldap_fixups(request_rec *r)
-{
-    char *docroot = 
-        apr_table_get(r->notes, "vhost-document-root");
-
-    /* If we don't have DocumentRoot in notes then do nothing */
-    if (docroot == NULL)
-        return DECLINED;
-
-    return set_document_root(r, docroot);
-}
-
 static void
 mod_vhost_ldap_register_hooks (apr_pool_t * p)
 {
@@ -742,8 +749,6 @@ mod_vhost_ldap_register_hooks (apr_pool_t * p)
 #if (APR_MAJOR_VERSION >= 1)
     ap_hook_optional_fn_retrieve(ImportULDAPOptFn,NULL,NULL,APR_HOOK_MIDDLE);
 #endif
-
-    ap_hook_fixups(mod_vhost_ldap_fixups, NULL, NULL, APR_HOOK_LAST);
 }
 
 module AP_MODULE_DECLARE_DATA vhost_ldap_module = {
