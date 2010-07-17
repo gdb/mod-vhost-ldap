@@ -452,6 +452,7 @@ static int mod_vhost_ldap_translate_name(request_rec *r)
     int sleep1 = 1;
     int sleep;
     struct berval hostnamebv, shostnamebv;
+    int ret = DECLINED;
 
     reqc =
 	(mod_vhost_ldap_request_t *)apr_pcalloc(r->pool, sizeof(mod_vhost_ldap_request_t));
@@ -622,6 +623,7 @@ null:
 	  r->filename = cgi;
 	  r->handler = "cgi-script";
 	  apr_table_setn(r->notes, "alias-forced-type", r->handler);
+	  ret = OK;
 	}
     } else if (r->uri[0] == '/') {
         /* we don't set r->filename here, and let other modules do it
@@ -687,7 +689,7 @@ null:
     }
 
     /* Hack to allow post-processing by other modules (mod_rewrite, mod_alias) */
-    return DECLINED;
+    return ret;
 }
 
 #ifdef HAVE_UNIX_SUEXEC
