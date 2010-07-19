@@ -135,6 +135,7 @@ if sys.platform != 'win32':
 
         def terminate(self):
             if self.returncode is None:
+                self._termination_requested = True
                 try:
                     os.kill(self.pid, signal.SIGTERM)
                 except OSError, e:

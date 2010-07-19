@@ -79,6 +79,7 @@ class Process(object):
         self._kwargs = dict(kwargs)
         self._name = name or type(self).__name__ + '-' + \
                      ':'.join(str(i) for i in self._identity)
+        self._termination_requested = False
 
     def run(self):
         '''
