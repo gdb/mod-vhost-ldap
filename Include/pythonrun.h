@@ -145,6 +145,7 @@ PyAPI_FUNC(void) PyByteArray_Fini(void);
 
 /* Stuff with no proper home (yet) */
 PyAPI_FUNC(char *) PyOS_Readline(FILE *, FILE *, char *);
+PyAPI_FUNC(void) PyOS_ClearPendingSignals(void);
 PyAPI_DATA(int) (*PyOS_InputHook)(void);
 PyAPI_DATA(char) *(*PyOS_ReadlineFunctionPointer)(FILE *, FILE *, char *);
 PyAPI_DATA(PyThreadState*) _PyOS_ReadlineTState;

@@ -927,6 +927,18 @@ PyOS_FiniInterrupts(void)
     finisignal();
 }
 
+void
+PyOS_ClearPendingSignals(void)
+{
+    int i;
+    if (!is_tripped)
+        return;
+    is_tripped = 0;
+    for (i = 1; i < NSIG; i++) {
+        Handlers[i].tripped = 0;
+    }
+}
+
 int
 PyOS_InterruptOccurred(void)
 {
