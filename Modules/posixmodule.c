@@ -3614,6 +3614,13 @@ posix_fork1(PyObject *self, PyObject *noargs)
     _PyImport_AcquireLock();
     pid = fork1();
     if (pid == 0) {
+        /*
+          If a signal is received by the child after the fork but
+          before clearing pending signals, it will be lost.  Since
+          there is no cross-platform way of disabling signals, however,
+          there's not much we can do except hope.
+        */
+        PyOS_ClearPendingSignals();
         /* child: this clobbers and resets the import lock. */
         PyOS_AfterFork();
     } else {
@@ -3647,6 +3654,7 @@ posix_fork(PyObject *self, PyObject *noargs)
     _PyImport_AcquireLock();
     pid = fork();
     if (pid == 0) {
+        PyOS_ClearPendingSignals();
         /* child: this clobbers and resets the import lock. */
         PyOS_AfterFork();
     } else {
