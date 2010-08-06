@@ -25,6 +25,15 @@
 
 #endif /* __APPLE__ */
 
+#if defined(HAVE_PTHREAD_SIGMASK) && !defined(HAVE_BROKEN_PTHREAD_SIGMASK)
+#  define SET_SIGMASK pthread_sigmask
+#else
+#if defined(HAVE_SIGPROCMASK) && !defined(HAVE_BROKEN_SIGPROCMASK)
+#  define SET_SIGMASK sigprocmask
+#endif
+#endif
+
+
 #define PY_SSIZE_T_CLEAN
 
 #include "Python.h"
@@ -3611,19 +3620,27 @@ posix_fork1(PyObject *self, PyObject *noargs)
 {
     pid_t pid;
     int result = 0;
+#ifdef SET_SIGMASK
+    sigset_t current, full;
+#endif
     _PyImport_AcquireLock();
+#ifdef SET_SIGMASK
+    sigfillset(&full);
+    /* Avoid race conditions */
+    SET_SIGMASK(SIG_SETMASK, &full, &current);
+#endif
     pid = fork1();
     if (pid == 0) {
-        /*
-          If a signal is received by the child after the fork but
-          before clearing pending signals, it will be lost.  Since
-          there is no cross-platform way of disabling signals, however,
-          there's not much we can do except hope.
-        */
         PyOS_ClearPendingSignals();
+#ifdef SET_SIGMASK
+        SET_SIGMASK(SIG_SETMASK, &current, NULL);
+#endif
         /* child: this clobbers and resets the import lock. */
         PyOS_AfterFork();
     } else {
+#ifdef SET_SIGMASK
+        SET_SIGMASK(SIG_SETMASK, &current, NULL);
+#endif
         /* parent: release the import lock. */
         result = _PyImport_ReleaseLock();
     }
@@ -3651,13 +3668,27 @@ posix_fork(PyObject *self, PyObject *noargs)
 {
     pid_t pid;
     int result = 0;
+#ifdef SET_SIGMASK
+    sigset_t current, full;
+#endif
     _PyImport_AcquireLock();
+#ifdef SET_SIGMASK
+    sigfillset(&full);
+    /* Avoid race conditions */
+    SET_SIGMASK(SIG_SETMASK, &full, &current);
+#endif
     pid = fork();
     if (pid == 0) {
         PyOS_ClearPendingSignals();
+#ifdef SET_SIGMASK
+        SET_SIGMASK(SIG_SETMASK, &current, NULL);
+#endif
         /* child: this clobbers and resets the import lock. */
         PyOS_AfterFork();
     } else {
+#ifdef SET_SIGMASK
+        SET_SIGMASK(SIG_SETMASK, &current, NULL);
+#endif
         /* parent: release the import lock. */
         result = _PyImport_ReleaseLock();
     }
