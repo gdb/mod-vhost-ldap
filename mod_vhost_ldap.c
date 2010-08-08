@@ -658,19 +658,19 @@ command_rec mod_vhost_ldap_cmds[] = {
 #define FILTER_LENGTH MAX_STRING_LEN
 static int mod_vhost_ldap_translate_name(request_rec *r)
 {
+    server_rec *clone;
+    const char *error;
     mod_vhost_ldap_request_t *reqc;
     int failures = 0;
     const char **vals = NULL;
     char filtbuf[FILTER_LENGTH];
-    mod_vhost_ldap_config_t *conf =
-	(mod_vhost_ldap_config_t *)ap_get_module_config(r->server->module_config, &vhost_ldap_module);
-    core_server_config *core =
-        (core_server_config *)ap_get_module_config(r->server->module_config, &core_module);
+    mod_vhost_ldap_config_t *conf;
+
     util_ldap_connection_t *ldc = NULL;
     int result = 0;
     const char *dn = NULL;
     char *cgi;
-    const char *hostname = NULL;
+    const char *hostname = "";
     int is_fallback = 0;
     int sleep0 = 0;
     int sleep1 = 1;
@@ -678,10 +678,19 @@ static int mod_vhost_ldap_translate_name(request_rec *r)
     struct berval hostnamebv, shostnamebv;
     int ret = DECLINED;
 
+    /* TODO: should we use the actual hostname here?  TODO: move this lower? */
+    if ((error = ap_init_virtual_host(r->pool, hostname, r->server, &clone)) != NULL) {
+        ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, r,
+		      "[mod_vhost_ldap.c]: Could not initialize a new VirtualHost: %s",
+		      error);
+	return HTTP_INTERNAL_SERVER_ERROR;
+    }
+
+    conf = ap_get_module_config(r->server->module_config, &vhost_ldap_module);
+
     reqc =
 	(mod_vhost_ldap_request_t *)apr_pcalloc(r->pool, sizeof(mod_vhost_ldap_request_t));
     memset(reqc, 0, sizeof(mod_vhost_ldap_request_t)); 
-
     ap_set_module_config(r->request_config, &vhost_ldap_module, reqc);
 
     // mod_vhost_ldap is disabled or we don't have LDAP Url
@@ -810,7 +819,7 @@ null:
             return HTTP_INTERNAL_SERVER_ERROR;
         }
 
-        if ((error = ap_reconfigure_directive(r->pool, r->server, dir, val)) != NULL) {
+        if ((error = ap_reconfigure_directive(r->pool, clone, dir, val)) != NULL) {
 	    ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, r,
                           "[mod_vhost_ldap.c]: error while reconfiguring %s: %s",
                           dir, error);
@@ -822,17 +831,17 @@ null:
             apr_file_t* error_log;
             apr_status_t status;
             char error[512];
-            if ((status = apr_file_open(&error_log, r->server->error_fname,
+            if ((status = apr_file_open(&error_log, clone->error_fname,
                                         APR_APPEND|APR_WRITE|APR_CREATE,
                                         APR_FPROT_OS_DEFAULT,
                                         r->pool)) != APR_SUCCESS) {
                 apr_strerror(status, error, sizeof(error));
                 ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, r,
                               "[mod_vhost_ldap.c] could not open error log \"%s\": %s",
-                              r->server->error_fname, error);
+                              clone->error_fname, error);
                 return HTTP_INTERNAL_SERVER_ERROR;
             }
-            r->server->error_log = error_log;
+            clone->error_log = error_log;
         } else if (!strcasecmp(dir, "ServerName")) {
             reqc->name = val;
         } else if (!strcasecmp(dir, "DocumentRoot")) {
@@ -900,52 +909,8 @@ null:
 	return DECLINED;
     }
 
-    if ((r->server = apr_pmemdup(r->pool, r->server, sizeof(*r->server))) == NULL) {
-        ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, r, 
-                      "[mod_vhost_ldap.c] translate: "
-                      "translate failed; Unable to copy r->server structure");
-	return HTTP_INTERNAL_SERVER_ERROR;
-    }
-
-    if ((r->server->module_config = apr_pmemdup(r->pool, r->server->module_config,
-						sizeof(void *) *
-						(total_modules + DYNAMIC_MODULE_LIMIT))) == NULL) {
-        ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, r, 
-                      "[mod_vhost_ldap.c] translate: "
-                      "translate failed; Unable to copy r->server->module_config structure");
-        return HTTP_INTERNAL_SERVER_ERROR;
-    }
-
-    if ((core = apr_pmemdup(r->pool, core, sizeof(*core))) == NULL) {
-        ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, r, 
-                      "[mod_vhost_ldap.c] translate: "
-                      "translate failed; Unable to copy r->core structure");
-        return HTTP_INTERNAL_SERVER_ERROR;
-    }
-    ap_set_module_config(r->server->module_config, &core_module, core);
-
-    /* Stolen from server/core.c */
-
-    /* Make it absolute, relative to ServerRoot */
-    reqc->docroot = ap_server_root_relative(r->pool, reqc->docroot);
-
-    if (reqc->docroot == NULL) {
-        ap_log_rerror(APLOG_MARK, APLOG_WARNING, 0, r, 
-                      "[mod_vhost_ldap.c] set_document_root: DocumentRoot must be a directory");
-
-        return HTTP_INTERNAL_SERVER_ERROR;
-    }
-
-    /* TODO: ap_configtestonly && ap_docrootcheck && */
-    if (apr_filepath_merge((char**)&core->ap_document_root, NULL, reqc->docroot,
-                           APR_FILEPATH_TRUENAME, r->pool) != APR_SUCCESS
-        || !ap_is_directory(r->pool, reqc->docroot)) {
-
-        ap_log_rerror(APLOG_MARK, APLOG_WARNING, 0, r,
-		      "[mod_vhost_ldap.c] set_document_root: Warning: DocumentRoot [%s] does not exist",
-		      reqc->docroot);
-        core->ap_document_root = reqc->docroot;
-    }
+    ap_fixup_virtual_host(r->pool, r->server, clone);
+    r->server = clone;
 
     /* Hack to allow post-processing by other modules (mod_rewrite, mod_alias) */
     return ret;
