@@ -1099,6 +1099,61 @@ class _TestPool(BaseTestCase):
         p.close()
         p.join()
 
+def terminates_by_signal(signum):
+    os.kill(os.getpid(), signum)
+
+def terminates_by_SystemExit():
+    raise SystemExit
+
+def sends_SIGKILL_sometimes(i):
+    if not i % 5:
+        os.kill(os.getpid(), signal.SIGKILL)
+
+class _TestPoolSupervisor(BaseTestCase):
+    ALLOWED_TYPES = ('processes', )
+
+    def test_job_killed_by_signal(self):
+        multiprocessing.log_to_stderr(1)
+        p = multiprocessing.Pool(3)
+        results = [p.apply_async(terminates_by_signal, (signal.SIGKILL, ))
+                        for i in xrange(20)]
+
+        res = p.apply_async(sqr, (7, 0.0))
+        self.assertEqual(res.get(), 49,
+                'supervisor did restart crashed workers')
+
+        for i, result in enumerate(results):
+            with self.assertRaises(RuntimeError):
+                print '%d: Made it to here' % i
+                result.get()
+
+        p.close()
+        p.join()
+
+    def test_map_killed_by_signal(self):
+        p = multiprocessing.Pool(3)
+        res = p.map_async(sends_SIGKILL_sometimes, xrange(12))
+        with self.assertRaises(RuntimeError):
+            res.get()
+        print("CLOSING")
+        p.close()
+        p.join()
+
+    def test_job_raising_SystemExit(self):
+        p = multiprocessing.Pool(3)
+        results = [p.apply_async(terminates_by_SystemExit)
+                        for i in xrange(20)]
+        for result in results:
+            with self.assertRaises(RuntimeError):
+                result.get()
+
+        res = p.apply_async(sqr, (7, 0.0))
+        self.assertEqual(res.get(), 49,
+                    'supervisor did restart crashed workers')
+
+        p.close()
+        p.join()
+
 
 class _TestPoolWorkerLifetime(BaseTestCase):
 
