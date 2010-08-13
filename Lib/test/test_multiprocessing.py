@@ -2022,14 +2022,14 @@ def test_main(run=None):
     multiprocessing.get_logger().setLevel(LOG_LEVEL)
 
     ProcessesMixin.pool = multiprocessing.Pool(4)
-    ThreadsMixin.pool = multiprocessing.dummy.Pool(4)
+    # ThreadsMixin.pool = multiprocessing.dummy.Pool(4)
     ManagerMixin.manager.__init__()
     ManagerMixin.manager.start()
     ManagerMixin.pool = ManagerMixin.manager.Pool(4)
 
     testcases = (
         sorted(testcases_processes.values(), key=lambda tc:tc.__name__) +
-        sorted(testcases_threads.values(), key=lambda tc:tc.__name__) +
+        # sorted(testcases_threads.values(), key=lambda tc:tc.__name__) +
         sorted(testcases_manager.values(), key=lambda tc:tc.__name__) +
         testcases_other
         )
@@ -2046,12 +2046,13 @@ def test_main(run=None):
             quiet=True):
         run(suite)
 
-    ThreadsMixin.pool.terminate()
+    # ThreadsMixin.pool.terminate()
     ProcessesMixin.pool.terminate()
     ManagerMixin.pool.terminate()
     ManagerMixin.manager.shutdown()
 
-    del ProcessesMixin.pool, ThreadsMixin.pool, ManagerMixin.pool
+    # del ProcessesMixin.pool, ThreadsMixin.pool, ManagerMixin.pool
+    del ProcessesMixin.pool, ManagerMixin.pool
 
 def main():
     test_main(unittest.TextTestRunner(verbosity=2).run)
