@@ -995,6 +995,14 @@ class _TestContainers(BaseTestCase):
 def sqr(x, wait=0.0):
     time.sleep(wait)
     return x*x
+
+def do_raise(e):
+    raise e
+
+def kill_self(sig):
+    os.kill(os.getpid(), sig)
+
+
 class _TestPool(BaseTestCase):
 
     def test_apply(self):
@@ -1070,6 +1078,27 @@ class _TestPool(BaseTestCase):
         join = TimingWrapper(self.pool.join)
         join()
         self.assertTrue(join.elapsed < 0.2)
+
+    def test_exceptions(self):
+        global un_unpickleable_across_processes
+        try:
+            del un_unpickleable_across_processes
+        except NameError:
+            pass
+        p = multiprocessing.Pool(3)
+        # This is defined after forking occurs, so the worker
+        # processes can't unpickle it, although worker threads can.
+        def un_unpickleable_across_processes(x):
+            return x
+        self.assertRaises(RuntimeError, p.map, kill_self, [signal.SIGKILL])
+        self.assertRaises(RuntimeError, p.map, do_raise, [SystemExit(1)])
+        try:
+            p.map(un_unpickleable_across_processes, [1])
+        except Exception, e:
+            self.assertIsInstance(e, AttributeError)
+        p.close()
+        p.join()
+
 
 class _TestPoolWorkerLifetime(BaseTestCase):
 
