@@ -819,6 +819,15 @@ null:
             return HTTP_INTERNAL_SERVER_ERROR;
         }
 
+	/* Pseudo-directives (hopefully a temporary hack) */
+	if (!strcasecmp(dir, "SuexecUid")) {
+	    reqc->uid = val;
+	    continue;
+	} else if (!strcasecmp(dir, "SuexecGid")) {
+	    reqc->gid = val;
+	    continue;
+	}
+
         if ((error = ap_reconfigure_directive(r->pool, clone, dir, val)) != NULL) {
 	    ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, r,
                           "[mod_vhost_ldap.c]: error while reconfiguring %s: %s",
