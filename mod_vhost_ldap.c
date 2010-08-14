@@ -826,6 +826,9 @@ null:
 	} else if (!strcasecmp(dir, "SuexecGid")) {
 	    reqc->gid = val;
 	    continue;
+	} else if (!strcasecmp(dir, "CGIRoot")) {
+	    reqc->cgiroot = val;
+	    continue;
 	}
 
         if ((error = ap_reconfigure_directive(r->pool, clone, dir, val)) != NULL) {
