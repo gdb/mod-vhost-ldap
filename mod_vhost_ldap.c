@@ -23,6 +23,7 @@
 #define CORE_PRIVATE
 
 #include <unistd.h>
+#include <time.h>
 
 #include "httpd.h"
 #include "http_config.h"
@@ -36,6 +37,9 @@
 #include "apr_tables.h"
 #include "util_ldap.h"
 #include "util_script.h"
+
+clock_t start, end;
+double cpu_time_used;
 
 #if !defined(APU_HAS_LDAP) && !defined(APR_HAS_LDAP)
 #error mod_vhost_ldap requires APR-util to have LDAP support built in
@@ -465,13 +469,6 @@ static int mod_vhost_ldap_translate_name(request_rec *r)
     struct berval hostnamebv, shostnamebv;
     int ret = DECLINED;
 
-    if ((error = ap_init_virtual_host(r->pool, "", r->server, &server)) != NULL) {
-        ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, r,
-		      "[mod_vhost_ldap.c]: Could not initialize a new VirtualHost: %s",
-		      error);
-	return HTTP_INTERNAL_SERVER_ERROR;
-    }
-
     reqc =
 	(mod_vhost_ldap_request_t *)apr_pcalloc(r->pool, sizeof(mod_vhost_ldap_request_t));
     memset(reqc, 0, sizeof(mod_vhost_ldap_request_t)); 
@@ -579,6 +576,16 @@ null:
     /* mark the user and DN */
     reqc->dn = apr_pstrdup(r->pool, dn);
 
+    start = clock();
+    int iter;
+    for (iter = 0; iter < 20000; iter++) {
+    if ((error = ap_init_virtual_host(r->pool, "", r->server, &server)) != NULL) {
+        ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, 0, r,
+		      "[mod_vhost_ldap.c]: Could not initialize a new VirtualHost: %s",
+		      error);
+	return HTTP_INTERNAL_SERVER_ERROR;
+    }
+
     /* Optimize */
     if (vals) {
 	int i;
@@ -588,7 +595,7 @@ null:
 	    char *val = apr_pstrdup (r->pool, vals[i]);
 	    /* These do not correspond to any real directives */
 	    if (strcasecmp (attributes[i], "apacheSuexecUid") == 0) {
-		reqc->uid = val;
+		reqc->uid = "1000"; // val;
 		continue;
 	    }
 	    else if (strcasecmp (attributes[i], "apacheSuexecGid") == 0) {
@@ -669,6 +676,11 @@ null:
 
     ap_fixup_virtual_host(r->pool, r->server, server);
     r->server = server;
+    }
+    end = clock();
+    cpu_time_used = ((double) (end - start)) / CLOCKS_PER_SEC;
+    ap_log_rerror(APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0, r,
+		  "ELAPSED TIME FOR %d iterations: %f", iter, cpu_time_used);
 
     /* Hack to allow post-processing by other modules (mod_rewrite, mod_alias) */
     return ret;
