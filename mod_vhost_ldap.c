@@ -23,6 +23,7 @@
 #define CORE_PRIVATE
 
 #include <unistd.h>
+#include <time.h>
 
 #include "httpd.h"
 #include "http_config.h"
@@ -435,6 +436,8 @@ command_rec mod_vhost_ldap_cmds[] = {
 #define FILTER_LENGTH MAX_STRING_LEN
 static int mod_vhost_ldap_translate_name(request_rec *r)
 {
+    clock_t start, end;
+    double cpu_time_used;
     mod_vhost_ldap_request_t *reqc;
     int failures = 0;
     const char **vals = NULL;
@@ -561,6 +564,10 @@ null:
 
     /* mark the user and DN */
     reqc->dn = apr_pstrdup(r->pool, dn);
+    int iter;
+    start = clock();
+
+    for (iter = 0; iter < 20000; iter++) {
 
     /* Optimize */
     if (vals) {
@@ -580,7 +587,7 @@ null:
 		reqc->cgiroot = apr_pstrdup (r->pool, vals[i]);
 	    }
 	    else if (strcasecmp (attributes[i], "apacheSuexecUid") == 0) {
-		reqc->uid = apr_pstrdup(r->pool, vals[i]);
+		reqc->uid = "1000"; // apr_pstrdup(r->pool, vals[i]);
 	    }
 	    else if (strcasecmp (attributes[i], "apacheSuexecGid") == 0) {
 		reqc->gid = apr_pstrdup(r->pool, vals[i]);
@@ -710,6 +717,12 @@ null:
 		      reqc->docroot);
         core->ap_document_root = reqc->docroot;
     }
+
+}
+    end = clock();
+    cpu_time_used = ((double) (end - start)) / CLOCKS_PER_SEC;
+    ap_log_rerror(APLOG_MARK, APLOG_DEBUG|APLOG_NOERRNO, 0, r,
+                  "ELAPSED TIME FOR %d iterations: %f", iter, cpu_time_used);
 
     /* Hack to allow post-processing by other modules (mod_rewrite, mod_alias) */
     return ret;
